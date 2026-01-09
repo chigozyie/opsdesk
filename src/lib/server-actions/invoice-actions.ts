@@ -21,12 +21,34 @@ import {
 import { buildAdvancedFilters, type AdvancedFilterOptions } from '@/lib/utils/search-optimization';
 
 // Input schema for invoice creation with workspace context
-const createInvoiceInputSchema = createInvoiceSchema.extend({
+const createInvoiceInputSchema = z.object({
+  customer_id: z.string(),
+  invoice_number: z.string(),
+  issue_date: z.string(),
+  due_date: z.union([z.string().optional(), z.literal('')]),
+  notes: z.union([z.string().optional(), z.literal('')]),
+  line_items: z.array(z.object({
+    description: z.string(),
+    quantity: z.number(),
+    unit_price: z.number(),
+    total: z.number()
+  })),
   workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
 });
 
 // Input schema for invoice update with IDs
-const updateInvoiceInputSchema = updateInvoiceSchema.extend({
+const updateInvoiceInputSchema = z.object({
+  customer_id: z.string(),
+  invoice_number: z.string(),
+  issue_date: z.string(),
+  due_date: z.union([z.string().optional(), z.literal('')]),
+  notes: z.union([z.string().optional(), z.literal('')]),
+  line_items: z.array(z.object({
+    description: z.string(),
+    quantity: z.number(),
+    unit_price: z.number(),
+    total: z.number()
+  })),
   id: z.string().uuid({ message: 'Invalid invoice ID' }),
   workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
 });
@@ -137,22 +159,22 @@ export const createInvoice = createWorkspaceAction(
 
       // Create line items with calculated totals
       const lineItemsData = line_items.map((item, index) => ({
-        invoice_id: invoice.id,
+        invoice_id: (invoice as any).id,
         description: item.description,
         quantity: item.quantity,
         unit_price: item.unit_price,
         total: InvoiceCalculatorService.calculateLineItemTotal(item.quantity, item.unit_price),
-        sort_order: item.sort_order || index,
+        sort_order: (item as any).sort_order || index,
         created_at: new Date().toISOString(),
       }));
 
       const { error: lineItemsError } = await context.supabase
         .from('invoice_line_items')
-        .insert(lineItemsData);
+        .insert(lineItemsData as any);
 
       if (lineItemsError) {
         // Rollback invoice creation
-        await context.supabase.from('invoices').delete().eq('id', invoice.id);
+        await context.supabase.from('invoices').delete().eq('id', (invoice as any).id);
         return handleDatabaseError(lineItemsError, 'create invoice line items');
       }
 
@@ -164,10 +186,10 @@ export const createInvoice = createWorkspaceAction(
           customer:customers(*),
           line_items:invoice_line_items(*)
         `)
-        .eq('id', invoice.id)
+        .eq('id', (invoice as any).id)
         .single();
 
-      return createSuccessResponse(completeInvoice as Invoice, 'Invoice created successfully');
+      return createSuccessResponse(completeInvoice as any, 'Invoice created successfully');
     } catch (error) {
       console.error('Error creating invoice:', error);
       return createErrorResponse('Failed to create invoice');
@@ -202,12 +224,12 @@ export const updateInvoice = createWorkspaceAction(
       }
 
       // Prevent editing paid or void invoices
-      if (existingInvoice.status === 'paid' || existingInvoice.status === 'void') {
+      if ((existingInvoice as any).status === 'paid' || (existingInvoice as any).status === 'void') {
         return createErrorResponse('Cannot edit paid or void invoices');
       }
 
       // Check for invoice number conflicts if number is being updated
-      if (updateData.invoice_number && updateData.invoice_number !== existingInvoice.invoice_number) {
+      if (updateData.invoice_number && updateData.invoice_number !== (existingInvoice as any).invoice_number) {
         const { data: numberConflict } = await context.supabase
           .from('invoices')
           .select('id')
@@ -239,8 +261,8 @@ export const updateInvoice = createWorkspaceAction(
       // Update invoice with audit fields
       const invoiceUpdateData = addAuditFields(updateData, context.user.id, true);
 
-      const { data: invoice, error } = await context.supabase
-        .from('invoices')
+      const { data: invoice, error } = await (context.supabase
+        .from('invoices') as any)
         .update(invoiceUpdateData)
         .eq('id', id)
         .eq('workspace_id', workspace_id)
@@ -289,7 +311,7 @@ export const updateInvoiceStatus = createWorkspaceAction(
         return createErrorResponse('Invoice not found');
       }
 
-      if (existingInvoice.status === status) {
+      if ((existingInvoice as any).status === status) {
         return createErrorResponse(`Invoice is already ${status}`);
       }
 
@@ -301,15 +323,15 @@ export const updateInvoiceStatus = createWorkspaceAction(
         void: [], // Void invoices cannot be changed
       };
 
-      if (!validTransitions[existingInvoice.status as InvoiceStatus].includes(status)) {
-        return createErrorResponse(`Cannot change invoice status from ${existingInvoice.status} to ${status}`);
+      if (!validTransitions[(existingInvoice as any).status as InvoiceStatus].includes(status)) {
+        return createErrorResponse(`Cannot change invoice status from ${(existingInvoice as any).status} to ${status}`);
       }
 
       // Update status with audit fields
       const updateData = addAuditFields({ status }, context.user.id, true);
 
-      const { data: invoice, error } = await context.supabase
-        .from('invoices')
+      const { data: invoice, error } = await (context.supabase
+        .from('invoices') as any)
         .update(updateData)
         .eq('id', id)
         .eq('workspace_id', workspace_id)
@@ -363,7 +385,7 @@ export const recalculateInvoice = createWorkspaceAction(
       }
 
       // Prevent recalculating paid or void invoices
-      if (existingInvoice.status === 'paid' || existingInvoice.status === 'void') {
+      if ((existingInvoice as any).status === 'paid' || (existingInvoice as any).status === 'void') {
         return createErrorResponse('Cannot recalculate paid or void invoices');
       }
 
@@ -386,8 +408,8 @@ export const recalculateInvoice = createWorkspaceAction(
       // Update invoice totals
       const updateData = addAuditFields(totals, context.user.id, true);
 
-      const { data: invoice, error } = await context.supabase
-        .from('invoices')
+      const { data: invoice, error } = await (context.supabase
+        .from('invoices') as any)
         .update(updateData)
         .eq('id', id)
         .eq('workspace_id', workspace_id)
@@ -449,7 +471,13 @@ export const getInvoices = createWorkspaceAction(
         .orderBy('created_at', 'desc')
         .paginate({ page, limit });
 
-      return createSuccessResponse(result);
+      return createSuccessResponse({
+        invoices: result.data,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        hasMore: result.hasMore,
+      });
     } catch (error) {
       console.error('Error fetching invoices:', error);
       return createErrorResponse('Failed to fetch invoices');
@@ -521,7 +549,7 @@ export const addInvoiceLineItem = createWorkspaceAction(
       }
 
       // Prevent editing paid or void invoices
-      if (existingInvoice.status === 'paid' || existingInvoice.status === 'void') {
+      if ((existingInvoice as any).status === 'paid' || (existingInvoice as any).status === 'void') {
         return createErrorResponse('Cannot edit paid or void invoices');
       }
 
@@ -542,7 +570,7 @@ export const addInvoiceLineItem = createWorkspaceAction(
           total,
           sort_order: lineItemData.sort_order,
           created_at: new Date().toISOString(),
-        });
+        } as any);
 
       if (lineItemError) {
         return handleDatabaseError(lineItemError, 'add line item');
@@ -562,8 +590,8 @@ export const addInvoiceLineItem = createWorkspaceAction(
 
         // Update invoice totals
         const updateData = addAuditFields(totals, context.user.id, true);
-        await context.supabase
-          .from('invoices')
+        await (context.supabase
+          .from('invoices') as any)
           .update(updateData)
           .eq('id', invoice_id)
           .eq('workspace_id', workspace_id);
@@ -580,7 +608,7 @@ export const addInvoiceLineItem = createWorkspaceAction(
         .eq('id', invoice_id)
         .single();
 
-      return createSuccessResponse(updatedInvoice as Invoice, 'Line item added successfully');
+      return createSuccessResponse(updatedInvoice as any as Invoice, 'Line item added successfully');
     } catch (error) {
       console.error('Error adding line item:', error);
       return createErrorResponse('Failed to add line item');
@@ -615,7 +643,7 @@ export const updateInvoiceLineItem = createWorkspaceAction(
       }
 
       // Prevent editing paid or void invoices
-      if (existingInvoice.status === 'paid' || existingInvoice.status === 'void') {
+      if ((existingInvoice as any).status === 'paid' || (existingInvoice as any).status === 'void') {
         return createErrorResponse('Cannot edit paid or void invoices');
       }
 
@@ -632,7 +660,7 @@ export const updateInvoiceLineItem = createWorkspaceAction(
       }
 
       // Calculate new total if quantity or unit_price changed
-      let lineItemUpdateData = { ...updateData };
+      let lineItemUpdateData: any = { ...updateData };
       if (updateData.quantity !== undefined || updateData.unit_price !== undefined) {
         // Get current values for calculation
         const { data: currentLineItem } = await context.supabase
@@ -642,16 +670,16 @@ export const updateInvoiceLineItem = createWorkspaceAction(
           .single();
 
         if (currentLineItem) {
-          const quantity = updateData.quantity ?? currentLineItem.quantity;
-          const unitPrice = updateData.unit_price ?? currentLineItem.unit_price;
+          const quantity = updateData.quantity ?? (currentLineItem as any).quantity;
+          const unitPrice = updateData.unit_price ?? (currentLineItem as any).unit_price;
           const total = InvoiceCalculatorService.calculateLineItemTotal(quantity, unitPrice);
           lineItemUpdateData = { ...lineItemUpdateData, total };
         }
       }
 
       // Update line item
-      const { error: updateError } = await context.supabase
-        .from('invoice_line_items')
+      const { error: updateError } = await (context.supabase
+        .from('invoice_line_items') as any)
         .update(lineItemUpdateData)
         .eq('id', id)
         .eq('invoice_id', invoice_id);
@@ -674,8 +702,8 @@ export const updateInvoiceLineItem = createWorkspaceAction(
 
         // Update invoice totals
         const invoiceUpdateData = addAuditFields(totals, context.user.id, true);
-        await context.supabase
-          .from('invoices')
+        await (context.supabase
+          .from('invoices') as any)
           .update(invoiceUpdateData)
           .eq('id', invoice_id)
           .eq('workspace_id', workspace_id);
@@ -692,7 +720,7 @@ export const updateInvoiceLineItem = createWorkspaceAction(
         .eq('id', invoice_id)
         .single();
 
-      return createSuccessResponse(updatedInvoice as Invoice, 'Line item updated successfully');
+      return createSuccessResponse(updatedInvoice as any as Invoice, 'Line item updated successfully');
     } catch (error) {
       console.error('Error updating line item:', error);
       return createErrorResponse('Failed to update line item');
@@ -727,7 +755,7 @@ export const removeInvoiceLineItem = createWorkspaceAction(
       }
 
       // Prevent editing paid or void invoices
-      if (existingInvoice.status === 'paid' || existingInvoice.status === 'void') {
+      if ((existingInvoice as any).status === 'paid' || (existingInvoice as any).status === 'void') {
         return createErrorResponse('Cannot edit paid or void invoices');
       }
 
@@ -778,8 +806,8 @@ export const removeInvoiceLineItem = createWorkspaceAction(
 
         // Update invoice totals
         const updateData = addAuditFields(totals, context.user.id, true);
-        await context.supabase
-          .from('invoices')
+        await (context.supabase
+          .from('invoices') as any)
           .update(updateData)
           .eq('id', invoice_id)
           .eq('workspace_id', workspace_id);
@@ -796,7 +824,7 @@ export const removeInvoiceLineItem = createWorkspaceAction(
         .eq('id', invoice_id)
         .single();
 
-      return createSuccessResponse(updatedInvoice as Invoice, 'Line item removed successfully');
+      return createSuccessResponse(updatedInvoice as any as Invoice, 'Line item removed successfully');
     } catch (error) {
       console.error('Error removing line item:', error);
       return createErrorResponse('Failed to remove line item');
@@ -878,7 +906,7 @@ export const deleteInvoice = createWorkspaceAction(
       }
 
       // Prevent deleting paid invoices
-      if (existingInvoice.status === 'paid') {
+      if ((existingInvoice as any).status === 'paid') {
         return createErrorResponse('Cannot delete paid invoices');
       }
 
@@ -1082,7 +1110,7 @@ export const getInvoiceSuggestions = createWorkspaceAction(
         throw error;
       }
 
-      const suggestions = (invoices || []).map(invoice => ({
+      const suggestions = (invoices || []).map((invoice: any) => ({
         id: invoice.id,
         invoice_number: invoice.invoice_number,
         customer_name: invoice.customers?.name,

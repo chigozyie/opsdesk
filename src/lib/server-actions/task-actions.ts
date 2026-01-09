@@ -20,23 +20,32 @@ import {
   type Task
 } from '@/lib/validation/schemas/task';
 import { buildAdvancedFilters, type AdvancedFilterOptions } from '@/lib/utils/search-optimization';
-} from '@/lib/validation/schemas/task';
 
 // Input schema for task creation with workspace context
-const createTaskInputSchema = createTaskSchema.extend({
+const createTaskInputSchema = z.object({
   workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
+  title: z.string(),
+  description: z.union([z.string().optional(), z.literal('')]),
+  assigned_to: z.union([z.string().optional(), z.literal('')]),
+  due_date: z.union([z.string().optional(), z.literal('')]),
 });
 
 // Input schema for task update with IDs
-const updateTaskInputSchema = updateTaskSchema.extend({
+const updateTaskInputSchema = z.object({
   id: z.string().uuid({ message: 'Invalid task ID' }),
   workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
+  title: z.string().optional(),
+  description: z.union([z.string().optional(), z.literal('')]),
+  assigned_to: z.union([z.string().optional(), z.literal('')]),
+  status: z.enum(['pending', 'in_progress', 'completed']).optional(),
+  due_date: z.union([z.string().optional(), z.literal('')]),
 });
 
 // Input schema for task completion
-const completeTaskInputSchema = completeTaskSchema.extend({
+const completeTaskInputSchema = z.object({
   id: z.string().uuid({ message: 'Invalid task ID' }),
   workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
+  completed_at: z.string().optional(),
 });
 
 // Input schema for task deletion
@@ -52,7 +61,7 @@ export const createTask = createWorkspaceAction(
   createTaskInputSchema,
   async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<Task>> => {
     try {
-      const { workspace_id, ...taskData } = input;
+      const { workspace_id, ...taskData } = input as any;
 
       // Validate assignee belongs to workspace if provided
       if (taskData.assigned_to) {
@@ -119,7 +128,7 @@ export const updateTask = createWorkspaceAction(
   updateTaskInputSchema,
   async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<Task>> => {
     try {
-      const { id, workspace_id, ...updateData } = input;
+      const { id, workspace_id, ...updateData } = input as any;
 
       // Check if task exists and belongs to workspace
       const { data: existingTask } = await context.supabase
@@ -160,17 +169,17 @@ export const updateTask = createWorkspaceAction(
 
       // Handle status changes
       const finalUpdateData = { ...updateData };
-      if (updateData.status === 'completed' && existingTask.status !== 'completed') {
+      if (updateData.status === 'completed' && (existingTask as any).status !== 'completed') {
         finalUpdateData.completed_at = new Date().toISOString();
-      } else if (updateData.status !== 'completed' && existingTask.status === 'completed') {
+      } else if (updateData.status !== 'completed' && (existingTask as any).status === 'completed') {
         finalUpdateData.completed_at = null;
       }
 
       // Update task with audit fields
       const taskUpdateData = addAuditFields(finalUpdateData, context.user.id, true);
 
-      const { data: task, error } = await context.supabase
-        .from('tasks')
+      const { data: task, error } = await (context.supabase
+        .from('tasks') as any)
         .update(taskUpdateData)
         .eq('id', id)
         .eq('workspace_id', workspace_id)
@@ -201,7 +210,7 @@ export const completeTask = createWorkspaceAction(
   completeTaskInputSchema,
   async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<Task>> => {
     try {
-      const { id, workspace_id, completed_at } = input;
+      const { id, workspace_id, completed_at } = input as any;
 
       // Check if task exists and belongs to workspace
       const { data: existingTask } = await context.supabase
@@ -215,7 +224,7 @@ export const completeTask = createWorkspaceAction(
         return createErrorResponse('Task not found');
       }
 
-      if (existingTask.status === 'completed') {
+      if ((existingTask as any).status === 'completed') {
         return createErrorResponse('Task is already completed');
       }
 
@@ -229,8 +238,8 @@ export const completeTask = createWorkspaceAction(
         true
       );
 
-      const { data: task, error } = await context.supabase
-        .from('tasks')
+      const { data: task, error } = await (context.supabase
+        .from('tasks') as any)
         .update(taskUpdateData)
         .eq('id', id)
         .eq('workspace_id', workspace_id)
@@ -258,7 +267,9 @@ export const completeTask = createWorkspaceAction(
  * Assigns a task to a user
  */
 export const assignTask = createWorkspaceAction(
-  taskAssignmentSchema.extend({
+  z.object({
+    task_id: z.string().uuid({ message: 'Invalid task ID' }),
+    assigned_to: z.string().uuid({ message: 'Invalid user ID' }),
     workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
   }),
   async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<Task>> => {
@@ -292,8 +303,8 @@ export const assignTask = createWorkspaceAction(
       // Update task assignment
       const taskUpdateData = addAuditFields({ assigned_to }, context.user.id, true);
 
-      const { data: task, error } = await context.supabase
-        .from('tasks')
+      const { data: task, error } = await (context.supabase
+        .from('tasks') as any)
         .update(taskUpdateData)
         .eq('id', task_id)
         .eq('workspace_id', workspace_id)
@@ -321,7 +332,10 @@ export const assignTask = createWorkspaceAction(
  * Performs bulk operations on tasks
  */
 export const bulkTaskOperation = createWorkspaceAction(
-  bulkTaskOperationSchema.extend({
+  z.object({
+    task_ids: z.array(z.string().uuid()),
+    operation: z.enum(['complete', 'assign', 'delete']),
+    assigned_to: z.string().uuid().optional(),
     workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
   }),
   async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<{
@@ -395,8 +409,8 @@ export const bulkTaskOperation = createWorkspaceAction(
           if (Object.keys(updateData).length > 0) {
             const taskUpdateData = addAuditFields(updateData, context.user.id, true);
 
-            const { error: updateError } = await context.supabase
-              .from('tasks')
+            const { error: updateError } = await (context.supabase
+              .from('tasks') as any)
               .update(taskUpdateData)
               .eq('id', taskId)
               .eq('workspace_id', workspace_id);
@@ -436,8 +450,16 @@ export const bulkTaskOperation = createWorkspaceAction(
  * Gets tasks for a workspace with filtering and pagination
  */
 export const getTasks = createWorkspaceAction(
-  taskFilterSchema.extend({
+  z.object({
     workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
+    search: z.string().optional(),
+    status: z.enum(['pending', 'in_progress', 'completed']).optional(),
+    assigned_to: z.string().uuid().optional(),
+    due_date_from: z.string().optional(),
+    due_date_to: z.string().optional(),
+    created_by: z.string().uuid().optional(),
+    page: z.number().int().min(1).default(1),
+    limit: z.number().int().min(1).max(100).default(20),
   }),
   async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<{
     tasks: Task[];
@@ -473,7 +495,13 @@ export const getTasks = createWorkspaceAction(
         .orderBy('created_at', 'desc')
         .paginate({ page, limit });
 
-      return createSuccessResponse(result);
+      return createSuccessResponse({
+        tasks: result.data,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        hasMore: result.hasMore,
+      });
     } catch (error) {
       console.error('Error fetching tasks:', error);
       return createErrorResponse('Failed to fetch tasks');
@@ -730,7 +758,7 @@ export const getTaskSuggestions = createWorkspaceAction(
         throw error;
       }
 
-      const suggestions = (tasks || []).map(task => ({
+      const suggestions = (tasks || []).map((task: any) => ({
         id: task.id,
         title: task.title,
         status: task.status,

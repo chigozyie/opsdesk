@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import { createCustomer, updateCustomer } from '@/lib/server-actions/customer-actions';
 import { Button } from '@/components/button';
 import { FormField } from '@/components/form-field';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert } from '@/components/alert';
+import { useToast } from '@/hooks/use-toast';
 import type { Customer } from '@/lib/validation/schemas/customer';
 
 interface CustomerFormProps {
@@ -16,6 +20,7 @@ interface CustomerFormProps {
 
 export function CustomerForm({ workspaceId, workspaceSlug, mode, customer }: CustomerFormProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -43,6 +48,12 @@ export function CustomerForm({ workspaceId, workspaceSlug, mode, customer }: Cus
       }
 
       if (result.success) {
+        toast({
+          title: mode === 'create' ? 'Customer created' : 'Customer updated',
+          description: `${data.name} has been ${mode === 'create' ? 'created' : 'updated'} successfully.`,
+          variant: 'success',
+        });
+
         if (mode === 'create') {
           router.push(`/app/${workspaceSlug}/customers/${result.data!.id}` as any);
         } else {
@@ -60,10 +71,22 @@ export function CustomerForm({ workspaceId, workspaceSlug, mode, customer }: Cus
         } else {
           setErrors({ general: result.message || 'An error occurred' });
         }
+
+        toast({
+          title: 'Error',
+          description: result.message || 'Failed to save customer. Please check the form and try again.',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Error submitting form:', error);
       setErrors({ general: 'An unexpected error occurred' });
+      
+      toast({
+        title: 'Unexpected error',
+        description: 'An unexpected error occurred. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -73,9 +96,7 @@ export function CustomerForm({ workspaceId, workspaceSlug, mode, customer }: Cus
     <form action={handleSubmit} className="space-y-6">
       {/* General Error */}
       {errors.general && (
-        <div className="rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{errors.general}</div>
-        </div>
+        <Alert type="error">{errors.general}</Alert>
       )}
 
       {/* Customer Name */}
@@ -90,7 +111,7 @@ export function CustomerForm({ workspaceId, workspaceSlug, mode, customer }: Cus
           placeholder="Enter customer name"
         />
         {errors.name && (
-          <p className="mt-1 text-sm text-red-600">{errors.name}</p>
+          <p className="mt-1 text-sm text-destructive">{errors.name}</p>
         )}
       </div>
 
@@ -105,7 +126,7 @@ export function CustomerForm({ workspaceId, workspaceSlug, mode, customer }: Cus
           placeholder="customer@example.com"
         />
         {errors.email && (
-          <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+          <p className="mt-1 text-sm text-destructive">{errors.email}</p>
         )}
       </div>
 
@@ -120,34 +141,31 @@ export function CustomerForm({ workspaceId, workspaceSlug, mode, customer }: Cus
           placeholder="+1 (555) 123-4567"
         />
         {errors.phone && (
-          <p className="mt-1 text-sm text-red-600">{errors.phone}</p>
+          <p className="mt-1 text-sm text-destructive">{errors.phone}</p>
         )}
       </div>
 
       {/* Address */}
-      <div>
-        <label htmlFor="address" className="block text-sm font-medium text-gray-700">
-          Address
-        </label>
-        <div className="mt-1">
-          <textarea
-            id="address"
-            name="address"
-            rows={3}
-            defaultValue={customer?.address || ''}
-            placeholder="Enter customer address"
-            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-          />
-        </div>
+      <div className="space-y-2">
+        <Label htmlFor="address">Address</Label>
+        <Textarea
+          id="address"
+          name="address"
+          rows={3}
+          defaultValue={customer?.address || ''}
+          placeholder="Enter customer address"
+        />
         {errors.address && (
-          <p className="mt-1 text-sm text-red-600">{errors.address}</p>
+          <p className="mt-1 text-sm text-destructive">{errors.address}</p>
         )}
       </div>
 
       {/* Form Actions */}
-      <div className="flex justify-end space-x-3">
-        <button
+      <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3">
+        <Button
           type="button"
+          variant="secondary"
+          className="w-full sm:w-auto"
           onClick={() => {
             if (mode === 'edit') {
               router.push(`/app/${workspaceSlug}/customers/${customer!.id}` as any);
@@ -155,15 +173,14 @@ export function CustomerForm({ workspaceId, workspaceSlug, mode, customer }: Cus
               router.push(`/app/${workspaceSlug}/customers` as any);
             }
           }}
-          className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Cancel
-        </button>
+        </Button>
         <Button
           type="submit"
           loading={isSubmitting}
           loadingText={mode === 'create' ? 'Creating...' : 'Updating...'}
-          className="w-auto"
+          className="w-full sm:w-auto"
         >
           {mode === 'create' ? 'Create Customer' : 'Update Customer'}
         </Button>

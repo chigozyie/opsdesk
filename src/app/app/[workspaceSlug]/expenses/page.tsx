@@ -20,13 +20,13 @@ interface ExpensePageProps {
 }
 
 export default async function ExpensePage({ params, searchParams }: ExpensePageProps) {
-  const { workspace, userRole } = await getWorkspaceContext(params.workspaceSlug);
+  const workspace = await getWorkspaceContext(params.workspaceSlug);
   
   if (!workspace) {
     return <div>Workspace not found</div>;
   }
 
-  const canModify = userRole === 'admin' || userRole === 'member';
+  const canModify = workspace.role === 'admin' || workspace.role === 'member';
 
   // Fetch expenses with filters
   const expenseFilters = {
@@ -94,7 +94,7 @@ export default async function ExpensePage({ params, searchParams }: ExpensePageP
         <ExpenseList
           expenses={expenses}
           workspaceSlug={params.workspaceSlug}
-          userRole={userRole}
+          userRole={workspace.role}
           currentPage={page}
           totalExpenses={total}
           hasMore={hasMore}

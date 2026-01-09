@@ -10,20 +10,20 @@ interface EditExpensePageProps {
 }
 
 export default async function EditExpensePage({ params }: EditExpensePageProps) {
-  const { workspace, userRole } = await getWorkspaceContext(params.workspaceSlug);
+  const workspace = await getWorkspaceContext(params.workspaceSlug);
   
   if (!workspace) {
     return <div>Workspace not found</div>;
   }
 
   // Check permissions
-  if (userRole === 'viewer') {
+  if (workspace.role === 'viewer') {
     return (
       <div className="p-6">
         <div className="text-center">
           <div className="text-red-600 mb-2">Access Denied</div>
           <div className="text-sm text-gray-600">
-            You don't have permission to edit expenses.
+            You don&apos;t have permission to edit expenses.
           </div>
         </div>
       </div>

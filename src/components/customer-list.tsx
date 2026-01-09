@@ -3,8 +3,26 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Users, Mail, Phone, MapPin, MoreVertical } from 'lucide-react';
 import { archiveCustomer } from '@/lib/server-actions/customer-actions';
 import { Pagination } from '@/components/pagination';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/hooks/use-toast';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { Customer } from '@/lib/validation/schemas/customer';
 
 interface CustomerListProps {
@@ -25,6 +43,7 @@ export function CustomerList({
   hasMore 
 }: CustomerListProps) {
   const router = useRouter();
+  const { toast } = useToast();
   const [archivingCustomers, setArchivingCustomers] = useState<Set<string>>(new Set());
 
   const canModify = userRole === 'admin' || userRole === 'member';
@@ -50,13 +69,26 @@ export function CustomerList({
       });
 
       if (result.success) {
+        toast({
+          title: customer.archived ? 'Customer restored' : 'Customer archived',
+          description: `${customer.name} has been ${customer.archived ? 'restored' : 'archived'} successfully.`,
+          variant: 'success',
+        });
         router.refresh();
       } else {
-        alert(result.message || 'Failed to update customer');
+        toast({
+          title: 'Error',
+          description: result.message || 'Failed to update customer',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Error archiving customer:', error);
-      alert('An error occurred while updating the customer');
+      toast({
+        title: 'Error',
+        description: 'An error occurred while updating the customer',
+        variant: 'destructive',
+      });
     } finally {
       setArchivingCustomers(prev => {
         const next = new Set(prev);
@@ -69,31 +101,18 @@ export function CustomerList({
   if (customers.length === 0) {
     return (
       <div className="text-center py-12">
-        <svg
-          className="mx-auto h-12 w-12 text-gray-400"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-          />
-        </svg>
-        <h3 className="mt-2 text-sm font-medium text-gray-900">No customers found</h3>
-        <p className="mt-1 text-sm text-gray-500">
+        <Users className="mx-auto h-12 w-12 text-muted-foreground" />
+        <h3 className="mt-2 text-sm font-medium text-foreground">No customers found</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
           Get started by creating your first customer.
         </p>
         {canModify && (
           <div className="mt-6">
-            <Link
-              href={`/app/${workspaceSlug}/customers/new` as any}
-              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              Add Customer
-            </Link>
+            <Button asChild>
+              <Link href={`/app/${workspaceSlug}/customers/new` as any}>
+                Add Customer
+              </Link>
+            </Button>
           </div>
         )}
       </div>
@@ -101,121 +120,208 @@ export function CustomerList({
   }
 
   return (
-    <div>
-      {/* Customer Table */}
-      <div className="overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Customer
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Contact
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Created
-              </th>
+    <div className="space-y-4">
+      {/* Mobile Card View */}
+      <div className="block sm:hidden space-y-4">
+        {customers.map((customer) => (
+          <div key={customer.id} className="bg-white border rounded-lg p-4 space-y-3">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <Link
+                  href={`/app/${workspaceSlug}/customers/${customer.id}` as any}
+                  className="font-medium text-primary hover:underline"
+                >
+                  {customer.name}
+                </Link>
+                <div className="flex items-center mt-1">
+                  <Badge variant={customer.archived ? 'secondary' : 'default'} className="text-xs">
+                    {customer.archived ? 'Archived' : 'Active'}
+                  </Badge>
+                </div>
+              </div>
               {canModify && (
-                <th className="relative px-6 py-3">
-                  <span className="sr-only">Actions</span>
-                </th>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <Link href={`/app/${workspaceSlug}/customers/${customer.id}/edit` as any}>
+                        Edit
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleArchiveCustomer(customer)}
+                      disabled={archivingCustomers.has(customer.id)}
+                      className={customer.archived ? 'text-green-600' : 'text-destructive'}
+                    >
+                      {archivingCustomers.has(customer.id)
+                        ? 'Processing...'
+                        : customer.archived
+                        ? 'Restore'
+                        : 'Archive'}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+            </div>
+            
+            <div className="space-y-2 text-sm">
+              {customer.email && (
+                <div className="flex items-center text-muted-foreground">
+                  <Mail className="h-4 w-4 mr-2 flex-shrink-0" />
+                  <a
+                    href={`mailto:${customer.email}`}
+                    className="text-primary hover:underline truncate"
+                  >
+                    {customer.email}
+                  </a>
+                </div>
+              )}
+              {customer.phone && (
+                <div className="flex items-center text-muted-foreground">
+                  <Phone className="h-4 w-4 mr-2 flex-shrink-0" />
+                  <a
+                    href={`tel:${customer.phone}`}
+                    className="hover:text-foreground"
+                  >
+                    {customer.phone}
+                  </a>
+                </div>
+              )}
+              {customer.address && (
+                <div className="flex items-start text-muted-foreground">
+                  <MapPin className="h-4 w-4 mr-2 flex-shrink-0 mt-0.5" />
+                  <span className="text-xs">{customer.address}</span>
+                </div>
+              )}
+            </div>
+            
+            <div className="text-xs text-muted-foreground">
+              Created {new Date(customer.created_at).toLocaleDateString()}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden sm:block rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Customer</TableHead>
+              <TableHead className="hidden md:table-cell">Contact</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="hidden lg:table-cell">Created</TableHead>
+              {canModify && <TableHead className="text-right">Actions</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {customers.map((customer) => (
-              <tr key={customer.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
+              <TableRow key={customer.id}>
+                <TableCell>
                   <div>
                     <Link
                       href={`/app/${workspaceSlug}/customers/${customer.id}` as any}
-                      className="text-sm font-medium text-blue-600 hover:text-blue-900"
+                      className="font-medium text-primary hover:underline"
                     >
                       {customer.name}
                     </Link>
                     {customer.address && (
-                      <p className="text-sm text-gray-500 truncate max-w-xs">
+                      <p className="text-sm text-muted-foreground truncate max-w-xs">
                         {customer.address}
                       </p>
                     )}
+                    {/* Show contact info on smaller screens */}
+                    <div className="md:hidden mt-1 text-sm space-y-1">
+                      {customer.email && (
+                        <div>
+                          <a
+                            href={`mailto:${customer.email}`}
+                            className="text-primary hover:underline text-xs"
+                          >
+                            {customer.email}
+                          </a>
+                        </div>
+                      )}
+                      {customer.phone && (
+                        <div className="text-muted-foreground text-xs">
+                          <a
+                            href={`tel:${customer.phone}`}
+                            className="hover:text-foreground"
+                          >
+                            {customer.phone}
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
+                </TableCell>
+                <TableCell className="hidden md:table-cell">
+                  <div className="text-sm">
                     {customer.email && (
                       <div>
                         <a
                           href={`mailto:${customer.email}`}
-                          className="text-blue-600 hover:text-blue-900"
+                          className="text-primary hover:underline"
                         >
                           {customer.email}
                         </a>
                       </div>
                     )}
                     {customer.phone && (
-                      <div className="text-gray-500">
+                      <div className="text-muted-foreground">
                         <a
                           href={`tel:${customer.phone}`}
-                          className="hover:text-gray-700"
+                          className="hover:text-foreground"
                         >
                           {customer.phone}
                         </a>
                       </div>
                     )}
                     {!customer.email && !customer.phone && (
-                      <span className="text-gray-400">No contact info</span>
+                      <span className="text-muted-foreground">No contact info</span>
                     )}
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      customer.archived
-                        ? 'bg-gray-100 text-gray-800'
-                        : 'bg-green-100 text-green-800'
-                    }`}
-                  >
+                </TableCell>
+                <TableCell>
+                  <Badge variant={customer.archived ? 'secondary' : 'default'}>
                     {customer.archived ? 'Archived' : 'Active'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  </Badge>
+                </TableCell>
+                <TableCell className="hidden lg:table-cell text-muted-foreground">
                   {new Date(customer.created_at).toLocaleDateString()}
-                </td>
+                </TableCell>
                 {canModify && (
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex items-center space-x-2">
-                      <Link
-                        href={`/app/${workspaceSlug}/customers/${customer.id}/edit` as any}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Edit
-                      </Link>
-                      <button
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end space-x-2">
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link href={`/app/${workspaceSlug}/customers/${customer.id}/edit` as any}>
+                          Edit
+                        </Link>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleArchiveCustomer(customer)}
                         disabled={archivingCustomers.has(customer.id)}
-                        className={`${
-                          customer.archived
-                            ? 'text-green-600 hover:text-green-900'
-                            : 'text-red-600 hover:text-red-900'
-                        } disabled:opacity-50`}
+                        className={customer.archived ? 'text-green-600 hover:text-green-700' : 'text-destructive hover:text-destructive/90'}
                       >
                         {archivingCustomers.has(customer.id)
                           ? 'Processing...'
                           : customer.archived
                           ? 'Restore'
                           : 'Archive'}
-                      </button>
+                      </Button>
                     </div>
-                  </td>
+                  </TableCell>
                 )}
-              </tr>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {/* Pagination */}

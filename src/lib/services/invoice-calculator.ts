@@ -253,12 +253,5 @@ export class InvoiceCalculatorService {
   }
 }
 
-// Export types for use in other modules
-export type {
-  InvoiceLineItemCalculation,
-  InvoiceCalculationResult,
-  InvoiceCalculationInput,
-};
-
 // Export the service as default
 export default InvoiceCalculatorService;

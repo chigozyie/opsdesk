@@ -11,7 +11,7 @@ interface ExpenseDetailPageProps {
 }
 
 export default async function ExpenseDetailPage({ params }: ExpenseDetailPageProps) {
-  const { workspace, userRole } = await getWorkspaceContext(params.workspaceSlug);
+  const workspace = await getWorkspaceContext(params.workspaceSlug);
   
   if (!workspace) {
     return <div>Workspace not found</div>;
@@ -43,7 +43,7 @@ export default async function ExpenseDetailPage({ params }: ExpenseDetailPagePro
   }
 
   const expense = expenseResult.data!;
-  const canModify = userRole === 'admin' || userRole === 'member';
+  const canModify = workspace.role === 'admin' || workspace.role === 'member';
 
   return (
     <div className="px-4 sm:px-6 lg:px-8">
@@ -101,7 +101,7 @@ export default async function ExpenseDetailPage({ params }: ExpenseDetailPagePro
         <ExpenseDetail
           expense={expense}
           workspaceSlug={params.workspaceSlug}
-          userRole={userRole}
+          userRole={workspace.role}
         />
       </div>
     </div>

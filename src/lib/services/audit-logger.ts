@@ -37,8 +37,8 @@ export class AuditLogger {
         user_agent: entry.userAgent || null,
       };
 
-      const { error } = await this.supabase
-        .from('audit_logs')
+      const { error } = await (this.supabase
+        .from('audit_logs') as any)
         .insert(auditLog);
 
       if (error) {
@@ -266,14 +266,16 @@ export class AuditLogger {
 
       data?.forEach((log) => {
         // Count by action type
-        stats.actionsByType[log.action] = (stats.actionsByType[log.action] || 0) + 1;
+        stats.actionsByType[(log as any).action] = (stats.actionsByType[(log as any).action] || 0) + 1;
         
         // Count by resource type
-        stats.actionsByResource[log.resource_type] = (stats.actionsByResource[log.resource_type] || 0) + 1;
+        stats.actionsByResource[(log as any).resource_type] = (stats.actionsByResource[(log as any).resource_type] || 0) + 1;
         
         // Count by day
-        const day = new Date(log.created_at).toISOString().split('T')[0];
-        stats.dailyActivity[day] = (stats.dailyActivity[day] || 0) + 1;
+        const day = new Date((log as any).created_at).toISOString().split('T')[0];
+        if (day) {
+          stats.dailyActivity[day] = (stats.dailyActivity[day] || 0) + 1;
+        }
       });
 
       return { data: stats, error: null };
@@ -286,6 +288,3 @@ export class AuditLogger {
 
 // Export singleton instance
 export const auditLogger = new AuditLogger();
-
-// Export types
-export type { AuditLogEntry };

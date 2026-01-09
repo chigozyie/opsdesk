@@ -184,7 +184,7 @@ export class SecurityService {
 
       // Check for IP address changes
       if (metadata.ipAddress && recentActions) {
-        const uniqueIPs = new Set(recentActions.map(a => a.ip_address).filter(Boolean));
+        const uniqueIPs = new Set(recentActions.map(a => (a as any).ip_address).filter(Boolean));
         if (uniqueIPs.size > 3) {
           reasons.push('Multiple IP addresses used recently');
         }
@@ -216,7 +216,7 @@ export class SecurityService {
           .gte('created_at', oneDayAgo.toISOString());
 
         const offHoursCount = offHoursActivity?.filter(a => {
-          const activityHour = new Date(a.created_at).getHours();
+          const activityHour = new Date((a as any).created_at).getHours();
           return activityHour < 6 || activityHour > 22;
         }).length || 0;
 

@@ -77,7 +77,7 @@ export function ExpenseFilters({ workspaceSlug, currentFilters }: ExpenseFilters
 
     const queryString = params.toString();
     const url = `/app/${workspaceSlug}/expenses${queryString ? `?${queryString}` : ''}`;
-    router.push(url);
+    router.push(url as any);
   };
 
   const clearFilters = () => {

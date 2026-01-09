@@ -75,10 +75,10 @@ export default async function WorkspaceSettingsPage({ params }: SettingsPageProp
               <MemberInviteForm 
                 workspaceId={workspace.id}
                 currentUserRole={workspace.role}
-                onSuccess={() => {
-                  // In a real app, you'd refresh the member list
-                  // For now, we'll just show a success message
-                }}
+                // onSuccess={() => {
+                //   // In a real app, you'd refresh the member list
+                //   // For now, we'll just show a success message
+                // }}
               />
             </div>
           </div>
@@ -95,10 +95,10 @@ export default async function WorkspaceSettingsPage({ params }: SettingsPageProp
                 members={members}
                 workspaceId={workspace.id}
                 currentUserRole={workspace.role}
-                onMemberUpdate={() => {
-                  // In a real app, you'd refresh the member list
-                  // For now, we'll just show a success message
-                }}
+                // onMemberUpdate={() => {
+                //   // In a real app, you'd refresh the member list
+                //   // For now, we'll just show a success message
+                // }}
               />
             </div>
           </div>

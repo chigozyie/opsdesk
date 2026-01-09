@@ -2,6 +2,8 @@ import { createServerClient, createBrowserClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { Database } from '@/lib/types/database';
+import { createSafeCookieAdapter } from '@/lib/utils/safe-cookies';
+import { canAccessCookies } from '@/lib/utils/build-context';
 
 // Browser client factory
 export function createBrowserSupabaseClient() {
@@ -13,6 +15,12 @@ export function createBrowserSupabaseClient() {
 
 // Server client factory (for server components and API routes)
 export function createServerSupabaseClient() {
+  // Use safe cookie access that handles build-time context
+  if (!canAccessCookies()) {
+    // During build time or when cookies are not accessible, use service role client
+    return createBuildTimeSupabaseClient();
+  }
+
   const cookieStore = cookies();
 
   return createServerClient<Database>(
@@ -35,6 +43,17 @@ export function createServerSupabaseClient() {
           }
         },
       },
+    }
+  );
+}
+
+// Build-time client factory (for static generation)
+export function createBuildTimeSupabaseClient() {
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: createSafeCookieAdapter(),
     }
   );
 }

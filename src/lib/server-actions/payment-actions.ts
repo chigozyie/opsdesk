@@ -95,7 +95,7 @@ export const recordPayment = createWorkspaceAction(
       }
 
       // Prevent payments on void invoices
-      if (invoice.status === 'void') {
+      if ((invoice as any).status === 'void') {
         return createErrorResponse('Cannot record payments on void invoices');
       }
 
@@ -105,16 +105,16 @@ export const recordPayment = createWorkspaceAction(
         .select('amount')
         .eq('invoice_id', invoice_id);
 
-      const currentPaidAmount = existingPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+      const currentPaidAmount = existingPayments?.reduce((sum, payment) => sum + (payment as any).amount, 0) || 0;
       const remainingBalance = InvoiceCalculatorService.calculateRemainingBalance(
-        invoice.total_amount,
+        (invoice as any).total_amount,
         currentPaidAmount
       );
 
       // Validate payment amount
       if (amount > remainingBalance) {
         return createErrorResponse(
-          `Payment amount ($${amount.toFixed(2)}) exceeds remaining balance ($${remainingBalance.toFixed(2)})`
+          `Payment amount (${amount.toFixed(2)}) exceeds remaining balance (${remainingBalance.toFixed(2)})`
         );
       }
 
@@ -142,16 +142,16 @@ export const recordPayment = createWorkspaceAction(
       // Calculate new balance
       const newPaidAmount = currentPaidAmount + amount;
       const newRemainingBalance = InvoiceCalculatorService.calculateRemainingBalance(
-        invoice.total_amount,
+        (invoice as any).total_amount,
         newPaidAmount
       );
-      const isFullyPaid = InvoiceCalculatorService.isFullyPaid(invoice.total_amount, newPaidAmount);
+      const isFullyPaid = InvoiceCalculatorService.isFullyPaid((invoice as any).total_amount, newPaidAmount);
 
       // Update invoice status if fully paid
-      if (isFullyPaid && invoice.status !== 'paid') {
+      if (isFullyPaid && (invoice as any).status !== 'paid') {
         const invoiceUpdateData = addAuditFields({ status: 'paid' as const }, context.user.id, true);
-        await context.supabase
-          .from('invoices')
+        await (context.supabase
+          .from('invoices') as any)
           .update(invoiceUpdateData)
           .eq('id', invoice_id)
           .eq('workspace_id', workspace_id);
@@ -217,7 +217,7 @@ export const updatePayment = createWorkspaceAction(
       const { data: invoice } = await context.supabase
         .from('invoices')
         .select('id, total_amount, status')
-        .eq('id', existingPayment.invoice_id)
+        .eq('id', (existingPayment as any).invoice_id)
         .eq('workspace_id', workspace_id)
         .single();
 
@@ -226,7 +226,7 @@ export const updatePayment = createWorkspaceAction(
       }
 
       // Prevent updates on void invoices
-      if (invoice.status === 'void') {
+      if ((invoice as any).status === 'void') {
         return createErrorResponse('Cannot update payments on void invoices');
       }
 
@@ -236,23 +236,23 @@ export const updatePayment = createWorkspaceAction(
         const { data: otherPayments } = await context.supabase
           .from('payments')
           .select('amount')
-          .eq('invoice_id', existingPayment.invoice_id)
+          .eq('invoice_id', (existingPayment as any).invoice_id)
           .neq('id', id);
 
-        const otherPaidAmount = otherPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+        const otherPaidAmount = otherPayments?.reduce((sum, payment) => sum + (payment as any).amount, 0) || 0;
         const newTotalPaid = otherPaidAmount + updateData.amount;
 
-        if (newTotalPaid > invoice.total_amount) {
-          const maxAllowed = invoice.total_amount - otherPaidAmount;
+        if (newTotalPaid > (invoice as any).total_amount) {
+          const maxAllowed = (invoice as any).total_amount - otherPaidAmount;
           return createErrorResponse(
-            `Payment amount ($${updateData.amount.toFixed(2)}) would exceed invoice total. Maximum allowed: $${maxAllowed.toFixed(2)}`
+            `Payment amount (${updateData.amount.toFixed(2)}) would exceed invoice total. Maximum allowed: ${maxAllowed.toFixed(2)}`
           );
         }
       }
 
       // Update payment
-      const { data: payment, error: updateError } = await context.supabase
-        .from('payments')
+      const { data: payment, error: updateError } = await (context.supabase
+        .from('payments') as any)
         .update(updateData)
         .eq('id', id)
         .eq('workspace_id', workspace_id)
@@ -267,23 +267,23 @@ export const updatePayment = createWorkspaceAction(
       const { data: allPayments } = await context.supabase
         .from('payments')
         .select('amount')
-        .eq('invoice_id', existingPayment.invoice_id);
+        .eq('invoice_id', (existingPayment as any).invoice_id);
 
-      const totalPaidAmount = allPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+      const totalPaidAmount = allPayments?.reduce((sum, payment) => sum + (payment as any).amount, 0) || 0;
       const remainingBalance = InvoiceCalculatorService.calculateRemainingBalance(
-        invoice.total_amount,
+        (invoice as any).total_amount,
         totalPaidAmount
       );
-      const isFullyPaid = InvoiceCalculatorService.isFullyPaid(invoice.total_amount, totalPaidAmount);
+      const isFullyPaid = InvoiceCalculatorService.isFullyPaid((invoice as any).total_amount, totalPaidAmount);
 
       // Update invoice status based on payment status
-      const newStatus = isFullyPaid ? 'paid' : (invoice.status === 'paid' ? 'sent' : invoice.status);
-      if (newStatus !== invoice.status) {
+      const newStatus = isFullyPaid ? 'paid' : ((invoice as any).status === 'paid' ? 'sent' : (invoice as any).status);
+      if (newStatus !== (invoice as any).status) {
         const invoiceUpdateData = addAuditFields({ status: newStatus as any }, context.user.id, true);
-        await context.supabase
-          .from('invoices')
+        await (context.supabase
+          .from('invoices') as any)
           .update(invoiceUpdateData)
-          .eq('id', existingPayment.invoice_id)
+          .eq('id', (existingPayment as any).invoice_id)
           .eq('workspace_id', workspace_id);
       }
 
@@ -296,7 +296,7 @@ export const updatePayment = createWorkspaceAction(
           line_items:invoice_line_items(*),
           payments:payments(*)
         `)
-        .eq('id', existingPayment.invoice_id)
+        .eq('id', (existingPayment as any).invoice_id)
         .single();
 
       return createSuccessResponse({
@@ -346,7 +346,7 @@ export const deletePayment = createWorkspaceAction(
       const { data: invoice } = await context.supabase
         .from('invoices')
         .select('id, total_amount, status')
-        .eq('id', existingPayment.invoice_id)
+        .eq('id', (existingPayment as any).invoice_id)
         .eq('workspace_id', workspace_id)
         .single();
 
@@ -369,23 +369,23 @@ export const deletePayment = createWorkspaceAction(
       const { data: remainingPayments } = await context.supabase
         .from('payments')
         .select('amount')
-        .eq('invoice_id', existingPayment.invoice_id);
+        .eq('invoice_id', (existingPayment as any).invoice_id);
 
-      const totalPaidAmount = remainingPayments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+      const totalPaidAmount = remainingPayments?.reduce((sum, payment) => sum + (payment as any).amount, 0) || 0;
       const remainingBalance = InvoiceCalculatorService.calculateRemainingBalance(
-        invoice.total_amount,
+        (invoice as any).total_amount,
         totalPaidAmount
       );
-      const isFullyPaid = InvoiceCalculatorService.isFullyPaid(invoice.total_amount, totalPaidAmount);
+      const isFullyPaid = InvoiceCalculatorService.isFullyPaid((invoice as any).total_amount, totalPaidAmount);
 
       // Update invoice status based on payment status
-      const newStatus = isFullyPaid ? 'paid' : (invoice.status === 'paid' ? 'sent' : invoice.status);
-      if (newStatus !== invoice.status) {
+      const newStatus = isFullyPaid ? 'paid' : ((invoice as any).status === 'paid' ? 'sent' : (invoice as any).status);
+      if (newStatus !== (invoice as any).status) {
         const invoiceUpdateData = addAuditFields({ status: newStatus as any }, context.user.id, true);
-        await context.supabase
-          .from('invoices')
+        await (context.supabase
+          .from('invoices') as any)
           .update(invoiceUpdateData)
-          .eq('id', existingPayment.invoice_id)
+          .eq('id', (existingPayment as any).invoice_id)
           .eq('workspace_id', workspace_id);
       }
 
@@ -398,7 +398,7 @@ export const deletePayment = createWorkspaceAction(
           line_items:invoice_line_items(*),
           payments:payments(*)
         `)
-        .eq('id', existingPayment.invoice_id)
+        .eq('id', (existingPayment as any).invoice_id)
         .single();
 
       return createSuccessResponse({
@@ -461,19 +461,19 @@ export const getInvoicePayments = createWorkspaceAction(
       }
 
       // Calculate totals
-      const totalPaid = payments?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+      const totalPaid = payments?.reduce((sum, payment) => sum + (payment as any).amount, 0) || 0;
       const remainingBalance = InvoiceCalculatorService.calculateRemainingBalance(
-        invoice.total_amount,
+        (invoice as any).total_amount,
         totalPaid
       );
-      const isFullyPaid = InvoiceCalculatorService.isFullyPaid(invoice.total_amount, totalPaid);
+      const isFullyPaid = InvoiceCalculatorService.isFullyPaid((invoice as any).total_amount, totalPaid);
 
       return createSuccessResponse({
         payments: payments as Payment[],
         totalPaid,
         remainingBalance,
         isFullyPaid,
-        invoiceTotal: invoice.total_amount,
+        invoiceTotal: (invoice as any).total_amount,
       });
     } catch (error) {
       console.error('Error fetching payments:', error);

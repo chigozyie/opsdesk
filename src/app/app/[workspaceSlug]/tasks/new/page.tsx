@@ -29,10 +29,13 @@ async function NewTaskContent({ params }: NewTaskPageProps) {
     redirect('/workspace/select');
   }
 
+  // TypeScript doesn't understand that workspace is non-null after the check above
+  const workspaceData = workspace as { id: string; name: string };
+
   const { data: membership } = await supabase
     .from('workspace_members')
     .select('role')
-    .eq('workspace_id', workspace.id)
+    .eq('workspace_id', workspaceData.id)
     .eq('user_id', user.id)
     .single();
 
@@ -40,8 +43,11 @@ async function NewTaskContent({ params }: NewTaskPageProps) {
     redirect('/workspace/select');
   }
 
+  // TypeScript doesn't understand that membership is non-null after the check above
+  const membershipData = membership as { role: string };
+
   // Check permissions
-  if (membership.role === 'viewer') {
+  if (membershipData.role === 'viewer') {
     redirect(`/app/${params.workspaceSlug}/tasks`);
   }
 
@@ -56,7 +62,7 @@ async function NewTaskContent({ params }: NewTaskPageProps) {
         email
       )
     `)
-    .eq('workspace_id', workspace.id);
+    .eq('workspace_id', workspaceData.id);
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -69,7 +75,7 @@ async function NewTaskContent({ params }: NewTaskPageProps) {
 
       <div className="bg-white shadow rounded-lg p-6">
         <TaskForm
-          workspaceId={workspace.id}
+          workspaceId={workspaceData.id}
           workspaceSlug={params.workspaceSlug}
           mode="create"
           members={members || []}

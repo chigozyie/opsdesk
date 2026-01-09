@@ -309,6 +309,7 @@ export function RoleManagement({
                   value={selectedNewRole || currentRole}
                   onChange={(e) => setSelectedNewRole(e.target.value as Role)}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  title="Select new role for member"
                 >
                   <option value="viewer">👁️ Viewer - Read-only access</option>
                   <option value="member">👤 Member - Can create and edit data</option>
@@ -361,8 +362,8 @@ export function RoleManagement({
 function formatPermission(permission: Permission): string {
   // Convert permission strings to human-readable format
   const [resource, action] = permission.split(':');
-  const resourceName = resource.replace('_', ' ');
-  const actionName = action.replace('_', ' ');
+  const resourceName = resource?.replace('_', ' ') || '';
+  const actionName = action?.replace('_', ' ') || '';
   
   return `${actionName} ${resourceName}`.replace(/\b\w/g, l => l.toUpperCase());
 }

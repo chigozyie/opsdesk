@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getInvoices } from '@/lib/server-actions/invoice-actions';
+import { Pagination } from './pagination';
 import type { Invoice } from '@/lib/validation/schemas/invoice';
 
 interface InvoiceListProps {

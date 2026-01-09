@@ -319,7 +319,7 @@ export function createResourceAction<TInput extends { id: string }, TOutput>(
         .eq('id', input.id)
         .single();
 
-      if (error || !data || data.workspace_id !== context.workspace?.id) {
+      if (error || !data || (data as any).workspace_id !== context.workspace?.id) {
         return {
           success: false,
           message: 'Resource not found or access denied',

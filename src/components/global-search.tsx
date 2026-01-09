@@ -180,6 +180,9 @@ export function GlobalSearch({
       document.addEventListener('keydown', handleGlobalKeyDown);
       return () => document.removeEventListener('keydown', handleGlobalKeyDown);
     }
+    
+    // Return undefined explicitly for the else case
+    return undefined;
   }, [showShortcut]);
 
   // Get icon for result type
@@ -275,6 +278,7 @@ export function GlobalSearch({
               {results.map((result, index) => (
                 <button
                   key={result.id}
+                  type="button"
                   onClick={() => handleResultClick(result)}
                   className={`w-full px-4 py-3 text-left hover:bg-gray-50 focus:bg-gray-50 focus:outline-none flex items-center space-x-3 ${
                     index === selectedIndex ? 'bg-gray-50' : ''

@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { getAuditStats } from '@/lib/server-actions/audit-actions';
+import { BarChart3, TrendingUp, Activity, Clock } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert } from '@/components/alert';
 
 interface AuditStatsCardsProps {
-  workspaceSlug: string;
+  stats: AuditStats | null;
+  error?: string | null;
 }
 
 interface AuditStats {
@@ -14,61 +16,26 @@ interface AuditStats {
   dailyActivity: Record<string, number>;
 }
 
-export function AuditStatsCards({ workspaceSlug }: AuditStatsCardsProps) {
-  const [stats, setStats] = useState<AuditStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const loadStats = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const result = await getAuditStats({
-          workspaceSlug,
-          days: 30,
-        });
-
-        if (result.success && result.data) {
-          setStats(result.data);
-        } else {
-          setError(result.message || 'Failed to load audit statistics');
-        }
-      } catch (err) {
-        setError('An error occurred while loading audit statistics');
-        console.error('Audit stats error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadStats();
-  }, [workspaceSlug]);
-
-  if (loading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="bg-white p-6 rounded-lg border animate-pulse">
-            <div className="h-4 bg-gray-200 rounded mb-2"></div>
-            <div className="h-8 bg-gray-200 rounded"></div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
+export function AuditStatsCards({ stats, error }: AuditStatsCardsProps) {
   if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-600">{error}</p>
-      </div>
-    );
+    return <Alert type="error">{error}</Alert>;
   }
 
   if (!stats) {
-    return null;
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {[...Array(4)].map((_, i) => (
+          <Card key={i}>
+            <CardContent className="p-6">
+              <div className="animate-pulse">
+                <div className="h-4 bg-muted rounded mb-2"></div>
+                <div className="h-8 bg-muted rounded"></div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
   }
 
   const formatAction = (action: string) => {
@@ -97,8 +64,8 @@ export function AuditStatsCards({ workspaceSlug }: AuditStatsCardsProps) {
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     
-    const todayCount = stats.dailyActivity[today] || 0;
-    const yesterdayCount = stats.dailyActivity[yesterday] || 0;
+    const todayCount = stats.dailyActivity[today!] || 0;
+    const yesterdayCount = stats.dailyActivity[yesterday!] || 0;
     
     return { today: todayCount, yesterday: yesterdayCount };
   };
@@ -108,70 +75,54 @@ export function AuditStatsCards({ workspaceSlug }: AuditStatsCardsProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
       {/* Total Actions */}
-      <div className="bg-white p-6 rounded-lg border">
-        <div className="flex items-center">
-          <div className="flex-1">
-            <p className="text-sm font-medium text-gray-600">Total Actions (30 days)</p>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalActions.toLocaleString()}</p>
-          </div>
-          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </div>
-        </div>
-      </div>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Total Actions (30 days)</CardTitle>
+          <BarChart3 className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{stats.totalActions.toLocaleString()}</div>
+        </CardContent>
+      </Card>
 
       {/* Most Active Resource */}
-      <div className="bg-white p-6 rounded-lg border">
-        <div className="flex items-center">
-          <div className="flex-1">
-            <p className="text-sm font-medium text-gray-600">Most Active Resource</p>
-            <p className="text-2xl font-bold text-gray-900">{getMostActiveResource()}</p>
-          </div>
-          <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
-          </div>
-        </div>
-      </div>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Most Active Resource</CardTitle>
+          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{getMostActiveResource()}</div>
+        </CardContent>
+      </Card>
 
       {/* Most Common Action */}
-      <div className="bg-white p-6 rounded-lg border">
-        <div className="flex items-center">
-          <div className="flex-1">
-            <p className="text-sm font-medium text-gray-600">Most Common Action</p>
-            <p className="text-2xl font-bold text-gray-900">{getMostCommonAction()}</p>
-          </div>
-          <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-            <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-            </svg>
-          </div>
-        </div>
-      </div>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Most Common Action</CardTitle>
+          <Activity className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{getMostCommonAction()}</div>
+        </CardContent>
+      </Card>
 
       {/* Today's Activity */}
-      <div className="bg-white p-6 rounded-lg border">
-        <div className="flex items-center">
-          <div className="flex-1">
-            <p className="text-sm font-medium text-gray-600">Today's Activity</p>
-            <p className="text-2xl font-bold text-gray-900">{recentActivity.today}</p>
-            {recentActivity.yesterday > 0 && (
-              <p className="text-xs text-gray-500">
-                {recentActivity.today > recentActivity.yesterday ? '+' : ''}
-                {((recentActivity.today - recentActivity.yesterday) / recentActivity.yesterday * 100).toFixed(0)}% vs yesterday
-              </p>
-            )}
-          </div>
-          <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-            <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-        </div>
-      </div>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Today&apos;s Activity</CardTitle>
+          <Clock className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">{recentActivity.today}</div>
+          {recentActivity.yesterday > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {recentActivity.today > recentActivity.yesterday ? '+' : ''}
+              {((recentActivity.today - recentActivity.yesterday) / recentActivity.yesterday * 100).toFixed(0)}% vs yesterday
+            </p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

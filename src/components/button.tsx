@@ -1,17 +1,14 @@
-import { ButtonHTMLAttributes, ReactNode } from 'react';
+import { ReactNode } from 'react';
+import { Button as ShadcnButton, ButtonProps as ShadcnButtonProps } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends Omit<ShadcnButtonProps, 'variant'> {
   variant?: 'primary' | 'secondary' | 'danger';
   loading?: boolean;
   loadingText?: string;
   children: ReactNode;
 }
-
-const variantClasses = {
-  primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
-  secondary: 'bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-500',
-  danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
-};
 
 export function Button({ 
   variant = 'primary', 
@@ -24,14 +21,20 @@ export function Button({
 }: ButtonProps) {
   const isDisabled = disabled || loading;
   
+  // Map custom variants to shadcn/ui variants
+  const shadcnVariant = variant === 'primary' ? 'default' : 
+                       variant === 'danger' ? 'destructive' : 
+                       'secondary';
+  
   return (
-    <button
-      type="button"
+    <ShadcnButton
+      variant={shadcnVariant}
       disabled={isDisabled}
-      className={`flex w-full justify-center rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${variantClasses[variant]} ${className}`}
+      className={cn('w-full', className)}
       {...props}
     >
+      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
       {loading ? (loadingText || 'Loading...') : children}
-    </button>
+    </ShadcnButton>
   );
 }

@@ -1,25 +1,14 @@
-import { Suspense } from 'react';
 import { requireAuth } from '@/lib/auth/server';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { AuditLogsList } from '@/components/audit-logs-list';
-import { AuditStatsCards } from '@/components/audit-stats-cards';
 
 interface AuditPageProps {
   params: {
     workspaceSlug: string;
   };
-  searchParams: {
-    resourceType?: string;
-    action?: string;
-    userId?: string;
-    startDate?: string;
-    endDate?: string;
-    page?: string;
-  };
 }
 
-export default async function AuditPage({ params, searchParams }: AuditPageProps) {
+export default async function AuditPage({ params }: AuditPageProps) {
   // Require authentication
   const user = await requireAuth();
   
@@ -43,7 +32,12 @@ export default async function AuditPage({ params, searchParams }: AuditPageProps
     redirect('/dashboard');
   }
 
-  const workspaceData = workspace as any;
+  const workspaceData = workspace as {
+    id: string;
+    slug: string;
+    name: string;
+    workspace_members: Array<{ role: string }>;
+  };
   const userRole = workspaceData.workspace_members[0]?.role;
 
   // Only admins can view audit logs
@@ -60,18 +54,15 @@ export default async function AuditPage({ params, searchParams }: AuditPageProps
         </p>
       </div>
 
-      {/* Audit Statistics */}
-      <Suspense fallback={<div className="animate-pulse bg-gray-200 h-32 rounded-lg" />}>
-        <AuditStatsCards workspaceSlug={params.workspaceSlug} />
-      </Suspense>
-
-      {/* Audit Logs */}
-      <Suspense fallback={<div className="animate-pulse bg-gray-200 h-96 rounded-lg" />}>
-        <AuditLogsList 
-          workspaceSlug={params.workspaceSlug}
-          filters={searchParams}
-        />
-      </Suspense>
+      <div className="bg-white p-8 rounded-lg border text-center">
+        <h2 className="text-xl font-semibold mb-4">Audit System Temporarily Unavailable</h2>
+        <p className="text-gray-600 mb-4">
+          The audit logging system is currently being updated to improve performance and reliability.
+        </p>
+        <p className="text-sm text-gray-500">
+          This feature will be restored in a future update.
+        </p>
+      </div>
     </div>
   );
 }

@@ -39,16 +39,22 @@ async function TasksContent({ params, searchParams }: TasksPageProps) {
     redirect('/workspace/select');
   }
 
+  // TypeScript doesn't understand that workspace is non-null after the check above
+  const workspaceData = workspace as { id: string; name: string };
+
   const { data: membership } = await supabase
     .from('workspace_members')
     .select('role')
-    .eq('workspace_id', workspace.id)
+    .eq('workspace_id', workspaceData.id)
     .eq('user_id', user.id)
     .single();
 
   if (!membership) {
     redirect('/workspace/select');
   }
+
+  // TypeScript doesn't understand that membership is non-null after the check above
+  const membershipData = membership as { role: string };
 
   // Get workspace members for filtering
   const { data: members } = await supabase
@@ -61,7 +67,7 @@ async function TasksContent({ params, searchParams }: TasksPageProps) {
         email
       )
     `)
-    .eq('workspace_id', workspace.id);
+    .eq('workspace_id', workspaceData.id);
 
   // Parse search params
   const page = parseInt(searchParams.page || '1', 10);
@@ -72,7 +78,7 @@ async function TasksContent({ params, searchParams }: TasksPageProps) {
 
   // Get tasks
   const result = await getTasks({
-    workspace_id: workspace.id,
+    workspace_id: workspaceData.id,
     page,
     limit: 20,
     search: search || undefined,
@@ -97,7 +103,7 @@ async function TasksContent({ params, searchParams }: TasksPageProps) {
             Manage and track tasks for your team
           </p>
         </div>
-        {(membership.role === 'admin' || membership.role === 'member') && (
+        {(membershipData.role === 'admin' || membershipData.role === 'member') && (
           <Link
             href={`/app/${params.workspaceSlug}/tasks/new` as any}
             className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
@@ -126,7 +132,7 @@ async function TasksContent({ params, searchParams }: TasksPageProps) {
       <TaskList
         tasks={tasks}
         workspaceSlug={params.workspaceSlug}
-        userRole={membership.role}
+        userRole={membershipData.role as 'admin' | 'member' | 'viewer'}
         currentPage={page}
         totalTasks={total}
         hasMore={hasMore}

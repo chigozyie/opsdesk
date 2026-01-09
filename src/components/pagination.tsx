@@ -2,6 +2,9 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { 
   calculatePaginationInfo, 
   generatePageNumbers, 
@@ -49,33 +52,31 @@ export function Pagination({
   };
 
   return (
-    <div className={`bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6 ${className}`}>
+    <div className={cn('bg-background px-4 py-3 flex items-center justify-between border-t border-border sm:px-6', className)}>
       {/* Mobile pagination */}
       <div className="flex-1 flex justify-between sm:hidden">
         {paginationInfo.hasPreviousPage ? (
-          <Link
-            href={buildPageUrl(paginationInfo.currentPage - 1)}
-            className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-          >
-            Previous
-          </Link>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={buildPageUrl(paginationInfo.currentPage - 1) as any}>
+              Previous
+            </Link>
+          </Button>
         ) : (
-          <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-50 cursor-not-allowed">
+          <Button variant="outline" size="sm" disabled>
             Previous
-          </span>
+          </Button>
         )}
         
         {paginationInfo.hasNextPage ? (
-          <Link
-            href={buildPageUrl(paginationInfo.currentPage + 1)}
-            className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-          >
-            Next
-          </Link>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={buildPageUrl(paginationInfo.currentPage + 1) as any}>
+              Next
+            </Link>
+          </Button>
         ) : (
-          <span className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-50 cursor-not-allowed">
+          <Button variant="outline" size="sm" disabled>
             Next
-          </span>
+          </Button>
         )}
       </div>
 
@@ -83,38 +84,33 @@ export function Pagination({
       <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
         {showInfo && (
           <div>
-            <p className="text-sm text-gray-700">
+            <p className="text-sm text-muted-foreground">
               Showing{' '}
-              <span className="font-medium">{paginationInfo.startItem}</span>
+              <span className="font-medium text-foreground">{paginationInfo.startItem}</span>
               {' '}to{' '}
-              <span className="font-medium">{paginationInfo.endItem}</span>
+              <span className="font-medium text-foreground">{paginationInfo.endItem}</span>
               {' '}of{' '}
-              <span className="font-medium">{paginationInfo.totalItems}</span>
+              <span className="font-medium text-foreground">{paginationInfo.totalItems}</span>
               {' '}results
             </p>
           </div>
         )}
         
         <div>
-          <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+          <nav className="flex items-center space-x-1" aria-label="Pagination">
             {/* Previous button */}
             {paginationInfo.hasPreviousPage ? (
-              <Link
-                href={buildPageUrl(paginationInfo.currentPage - 1)}
-                className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-              >
-                <span className="sr-only">Previous</span>
-                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
-                </svg>
-              </Link>
+              <Button variant="outline" size="icon" asChild>
+                <Link href={buildPageUrl(paginationInfo.currentPage - 1) as any}>
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="sr-only">Previous</span>
+                </Link>
+              </Button>
             ) : (
-              <span className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-gray-50 text-sm font-medium text-gray-300 cursor-not-allowed">
+              <Button variant="outline" size="icon" disabled>
+                <ChevronLeft className="h-4 w-4" />
                 <span className="sr-only">Previous</span>
-                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
-                </svg>
-              </span>
+              </Button>
             )}
 
             {/* Page numbers */}
@@ -123,7 +119,7 @@ export function Pagination({
                 return (
                   <span
                     key={`ellipsis-${index}`}
-                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700"
+                    className="flex items-center justify-center px-3 py-2 text-sm text-muted-foreground"
                   >
                     ...
                   </span>
@@ -133,42 +129,43 @@ export function Pagination({
               const isCurrentPage = pageNum === paginationInfo.currentPage;
               
               return isCurrentPage ? (
-                <span
+                <Button
                   key={pageNum}
+                  variant="default"
+                  size="sm"
+                  className="min-w-[2.5rem]"
                   aria-current="page"
-                  className="z-10 bg-blue-50 border-blue-500 text-blue-600 relative inline-flex items-center px-4 py-2 border text-sm font-medium"
                 >
                   {pageNum}
-                </span>
+                </Button>
               ) : (
-                <Link
+                <Button
                   key={pageNum}
-                  href={buildPageUrl(pageNum)}
-                  className="bg-white border-gray-300 text-gray-500 hover:bg-gray-50 relative inline-flex items-center px-4 py-2 border text-sm font-medium"
+                  variant="outline"
+                  size="sm"
+                  className="min-w-[2.5rem]"
+                  asChild
                 >
-                  {pageNum}
-                </Link>
+                  <Link href={buildPageUrl(pageNum) as any}>
+                    {pageNum}
+                  </Link>
+                </Button>
               );
             })}
 
             {/* Next button */}
             {paginationInfo.hasNextPage ? (
-              <Link
-                href={buildPageUrl(paginationInfo.currentPage + 1)}
-                className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-              >
-                <span className="sr-only">Next</span>
-                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                </svg>
-              </Link>
+              <Button variant="outline" size="icon" asChild>
+                <Link href={buildPageUrl(paginationInfo.currentPage + 1) as any}>
+                  <ChevronRight className="h-4 w-4" />
+                  <span className="sr-only">Next</span>
+                </Link>
+              </Button>
             ) : (
-              <span className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-gray-50 text-sm font-medium text-gray-300 cursor-not-allowed">
+              <Button variant="outline" size="icon" disabled>
+                <ChevronRight className="h-4 w-4" />
                 <span className="sr-only">Next</span>
-                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
-                </svg>
-              </span>
+              </Button>
             )}
           </nav>
         </div>
@@ -202,32 +199,30 @@ export function SimplePagination({
   };
 
   return (
-    <div className={`bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6 ${className}`}>
+    <div className={cn('bg-background px-4 py-3 flex items-center justify-between border-t border-border sm:px-6', className)}>
       <div className="flex-1 flex justify-between">
         {currentPage > 1 ? (
-          <Link
-            href={buildPageUrl(currentPage - 1)}
-            className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-          >
-            Previous
-          </Link>
+          <Button variant="outline" asChild>
+            <Link href={buildPageUrl(currentPage - 1) as any}>
+              Previous
+            </Link>
+          </Button>
         ) : (
-          <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-50 cursor-not-allowed">
+          <Button variant="outline" disabled>
             Previous
-          </span>
+          </Button>
         )}
         
         {hasMore ? (
-          <Link
-            href={buildPageUrl(currentPage + 1)}
-            className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-          >
-            Next
-          </Link>
+          <Button variant="outline" asChild>
+            <Link href={buildPageUrl(currentPage + 1) as any}>
+              Next
+            </Link>
+          </Button>
         ) : (
-          <span className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-400 bg-gray-50 cursor-not-allowed">
+          <Button variant="outline" disabled>
             Next
-          </span>
+          </Button>
         )}
       </div>
     </div>

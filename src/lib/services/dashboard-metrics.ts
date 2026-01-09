@@ -112,18 +112,18 @@ export class DashboardMetricsService {
       let sentCount = 0;
 
       invoices.forEach(invoice => {
-        total += invoice.total_amount;
+        total += (invoice as any).total_amount;
 
-        if (invoice.status === 'draft') {
+        if ((invoice as any).status === 'draft') {
           draftCount++;
-        } else if (invoice.status === 'sent') {
+        } else if ((invoice as any).status === 'sent') {
           sentCount++;
           
           // Check if overdue
-          if (invoice.due_date) {
-            const dueDate = new Date(invoice.due_date);
+          if ((invoice as any).due_date) {
+            const dueDate = new Date((invoice as any).due_date);
             if (dueDate < today) {
-              overdueTotal += invoice.total_amount;
+              overdueTotal += (invoice as any).total_amount;
               overdueCount++;
             }
           }
@@ -196,7 +196,7 @@ export class DashboardMetricsService {
         return 0;
       }
 
-      const total = invoices.reduce((sum, invoice) => sum + invoice.total_amount, 0);
+      const total = invoices.reduce((sum, invoice) => sum + (invoice as any).total_amount, 0);
       return Math.round(total * 100) / 100;
     } catch (error) {
       console.error('Error calculating monthly income:', error);
@@ -247,7 +247,7 @@ export class DashboardMetricsService {
         return 0;
       }
 
-      const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+      const total = expenses.reduce((sum, expense) => sum + (expense as any).amount, 0);
       return Math.round(total * 100) / 100;
     } catch (error) {
       console.error('Error calculating monthly expenses:', error);
@@ -595,13 +595,6 @@ export class DashboardMetricsService {
     }
   }
 }
-
-// Export types for use in other modules
-export type {
-  DashboardMetrics,
-  MonthlyFinancialData,
-  OutstandingInvoicesSummary,
-};
 
 // Export the service as default
 export default DashboardMetricsService;

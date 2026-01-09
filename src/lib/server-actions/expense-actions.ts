@@ -20,15 +20,35 @@ import {
 import { buildAdvancedFilters, type AdvancedFilterOptions } from '@/lib/utils/search-optimization';
 
 // Input schema for expense creation with workspace context
-const createExpenseInputSchema = createExpenseSchema.extend({
+const createExpenseInputSchema = z.object({
   workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
-});
+  vendor: z.string().min(1, 'Vendor name is required').max(255, 'Vendor name must be less than 255 characters'),
+  category: z.string().min(1, 'Category is required').max(100, 'Category must be less than 100 characters'),
+  amount: z.number().positive({ message: 'Amount must be positive' }),
+  expense_date: z.string().date({ message: 'Please enter a valid date' }),
+  description: z.string().optional().or(z.literal('')),
+  receipt_url: z.string().url({ message: 'Please enter a valid URL' }).optional().or(z.literal('')),
+}).transform((data) => ({
+  ...data,
+  description: data.description === '' ? null : data.description,
+  receipt_url: data.receipt_url === '' ? null : data.receipt_url,
+}));
 
 // Input schema for expense update with IDs
-const updateExpenseInputSchema = updateExpenseSchema.extend({
+const updateExpenseInputSchema = z.object({
   id: z.string().uuid({ message: 'Invalid expense ID' }),
   workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
-});
+  vendor: z.string().min(1, 'Vendor name is required').max(255, 'Vendor name must be less than 255 characters').optional(),
+  category: z.string().min(1, 'Category is required').max(100, 'Category must be less than 100 characters').optional(),
+  amount: z.number().positive({ message: 'Amount must be positive' }).optional(),
+  expense_date: z.string().date({ message: 'Please enter a valid date' }).optional(),
+  description: z.string().optional().or(z.literal('')),
+  receipt_url: z.string().url({ message: 'Please enter a valid URL' }).optional().or(z.literal('')),
+}).transform((data) => ({
+  ...data,
+  description: data.description === '' ? null : data.description,
+  receipt_url: data.receipt_url === '' ? null : data.receipt_url,
+}));
 
 // Input schema for expense deletion
 const deleteExpenseInputSchema = z.object({
@@ -121,8 +141,8 @@ export const updateExpense = createWorkspaceAction(
       // Update expense with audit fields
       const expenseUpdateData = addAuditFields(updateData, context.user.id, true);
 
-      const { data: expense, error } = await context.supabase
-        .from('expenses')
+      const { data: expense, error } = await (context.supabase
+        .from('expenses') as any)
         .update(expenseUpdateData)
         .eq('id', id)
         .eq('workspace_id', workspace_id)
@@ -234,7 +254,16 @@ export const getExpenses = createWorkspaceAction(
         .orderBy('created_at', 'desc')
         .paginate({ page, limit });
 
-      return createSuccessResponse(result);
+      // Transform the result to match the expected format
+      const transformedResult = {
+        expenses: result.data,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        hasMore: result.hasMore
+      };
+
+      return createSuccessResponse(transformedResult);
     } catch (error) {
       console.error('Error fetching expenses:', error);
       return createErrorResponse('Failed to fetch expenses');
@@ -301,7 +330,7 @@ export const getExpenseCategories = createWorkspaceAction(
       }
 
       // Get unique categories
-      const uniqueCategories = [...new Set(categories.map(item => item.category))];
+      const uniqueCategories = Array.from(new Set(categories.map(item => (item as any).category)));
 
       return createSuccessResponse(uniqueCategories);
     } catch (error) {
@@ -336,7 +365,7 @@ export const getExpenseVendors = createWorkspaceAction(
       }
 
       // Get unique vendors
-      const uniqueVendors = [...new Set(vendors.map(item => item.vendor))];
+      const uniqueVendors = Array.from(new Set(vendors.map(item => (item as any).vendor)));
 
       return createSuccessResponse(uniqueVendors);
     } catch (error) {
@@ -620,7 +649,7 @@ export const getExpenseSuggestions = createWorkspaceAction(
           .limit(limit);
 
         if (!vendorError && vendors) {
-          const uniqueVendors = [...new Set(vendors.map(v => v.vendor))];
+          const uniqueVendors = Array.from(new Set(vendors.map(v => (v as any).vendor)));
           uniqueVendors.forEach(vendor => {
             suggestions.push({
               value: vendor,
@@ -642,11 +671,11 @@ export const getExpenseSuggestions = createWorkspaceAction(
           .limit(limit);
 
         if (!categoryError && categories) {
-          const uniqueCategories = [...new Set(categories.map(c => c.category))];
+          const uniqueCategories = Array.from(new Set(categories.map(c => (c as any).category)));
           uniqueCategories.forEach(category => {
             suggestions.push({
               value: category,
-              label: category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+              label: category.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
               type: 'category',
             });
           });

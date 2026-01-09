@@ -146,7 +146,7 @@ export function createServerAction<TInput, TOutput>(
       // Step 5: Initialize context
       const supabase = createClient();
       const context: ServerActionContext = {
-        user,
+        user: user as { id: string; email: string },
         supabase,
       };
 
@@ -156,8 +156,8 @@ export function createServerAction<TInput, TOutput>(
         if (!workspaceData.success) {
           return {
             success: false,
-            message: workspaceData.message || 'Workspace access denied',
-            errors: workspaceData.errors,
+            message: (workspaceData as any).message || 'Workspace access denied',
+            errors: (workspaceData as any).errors,
           };
         }
         context.workspace = workspaceData.data!;

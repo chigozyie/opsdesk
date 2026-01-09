@@ -53,8 +53,8 @@ export async function createWorkspace(formData: FormData) {
     const serviceSupabase = createServiceSupabaseClient();
     
     // Create workspace with explicit user ID
-    const { data: workspace, error: workspaceError } = await serviceSupabase
-      .from('workspaces')
+    const { data: workspace, error: workspaceError } = await (serviceSupabase
+      .from('workspaces') as any)
       .insert({
         name,
         slug,
@@ -71,10 +71,10 @@ export async function createWorkspace(formData: FormData) {
     }
 
     // Add creator as admin member
-    const { error: memberError } = await serviceSupabase
-      .from('workspace_members')
+    const { error: memberError } = await (serviceSupabase
+      .from('workspace_members') as any)
       .insert({
-        workspace_id: workspace.id,
+        workspace_id: (workspace as any).id,
         user_id: user.id,
         role: 'admin'
       });
@@ -82,7 +82,7 @@ export async function createWorkspace(formData: FormData) {
     if (memberError) {
       console.error('Error adding workspace member:', memberError);
       // Try to clean up the workspace
-      await serviceSupabase.from('workspaces').delete().eq('id', workspace.id);
+      await (serviceSupabase.from('workspaces') as any).delete().eq('id', (workspace as any).id);
       return {
         error: 'Failed to set up workspace membership. Please try again.'
       };

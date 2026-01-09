@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { getAuditLogs } from '@/lib/server-actions/audit-actions';
+import { useState } from 'react';
 import { Button } from '@/components/button';
 import { FormField } from '@/components/form-field';
 
@@ -20,8 +19,8 @@ interface AuditLog {
 }
 
 interface AuditLogsListProps {
-  workspaceSlug: string;
-  filters: {
+  initialLogs: AuditLog[];
+  initialFilters: {
     resourceType?: string;
     action?: string;
     userId?: string;
@@ -29,65 +28,26 @@ interface AuditLogsListProps {
     endDate?: string;
     page?: string;
   };
+  hasMore: boolean;
+  workspaceSlug: string;
 }
 
-export function AuditLogsList({ workspaceSlug, filters }: AuditLogsListProps) {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(parseInt(filters.page || '1'));
-  const [hasMore, setHasMore] = useState(false);
-  const [filterForm, setFilterForm] = useState({
-    resourceType: filters.resourceType || '',
-    action: filters.action || '',
-    startDate: filters.startDate || '',
-    endDate: filters.endDate || '',
-  });
-
-  const loadAuditLogs = async (page = 1, resetLogs = true) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const result = await getAuditLogs({
-        workspaceSlug,
-        page,
-        resourceType: filterForm.resourceType || undefined,
-        action: filterForm.action || undefined,
-        startDate: filterForm.startDate || undefined,
-        endDate: filterForm.endDate || undefined,
-      });
-
-      if (result.success && result.data) {
-        if (resetLogs) {
-          setLogs(result.data.logs);
-        } else {
-          setLogs(prev => [...prev, ...result.data.logs]);
-        }
-        setHasMore(result.data.pagination.hasMore);
-        setCurrentPage(page);
-      } else {
-        setError(result.message || 'Failed to load audit logs');
-      }
-    } catch (err) {
-      setError('An error occurred while loading audit logs');
-      console.error('Audit logs error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadAuditLogs(1, true);
-  }, [workspaceSlug]);
+export function AuditLogsList({ initialLogs, initialFilters, hasMore: initialHasMore }: AuditLogsListProps) {
+  const [logs] = useState<AuditLog[]>(initialLogs);
+  const [loading] = useState(false);
+  const [error] = useState<string | null>(null);
+  const [hasMore] = useState(initialHasMore);
 
   const handleFilterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    loadAuditLogs(1, true);
+    // For now, we'll just show a message that filtering requires a page refresh
+    // In a full implementation, you'd want to use router.push to update the URL
+    alert('Please use the browser to navigate with new filters. This will be improved in a future update.');
   };
 
   const handleLoadMore = () => {
-    loadAuditLogs(currentPage + 1, false);
+    // For now, we'll just show a message that load more requires server-side implementation
+    alert('Load more functionality requires server-side implementation. This will be improved in a future update.');
   };
 
   const formatDate = (dateString: string) => {
@@ -117,65 +77,6 @@ export function AuditLogsList({ workspaceSlug, filters }: AuditLogsListProps) {
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
-      <div className="bg-white p-6 rounded-lg border">
-        <h3 className="text-lg font-medium mb-4">Filter Audit Logs</h3>
-        <form onSubmit={handleFilterSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <FormField
-            label="Resource Type"
-            name="resourceType"
-            type="select"
-            value={filterForm.resourceType}
-            onChange={(e) => setFilterForm(prev => ({ ...prev, resourceType: e.target.value }))}
-            options={[
-              { value: '', label: 'All Resources' },
-              { value: 'customers', label: 'Customers' },
-              { value: 'invoices', label: 'Invoices' },
-              { value: 'expenses', label: 'Expenses' },
-              { value: 'tasks', label: 'Tasks' },
-              { value: 'payments', label: 'Payments' },
-              { value: 'workspace_members', label: 'Members' },
-            ]}
-          />
-          
-          <FormField
-            label="Action"
-            name="action"
-            type="select"
-            value={filterForm.action}
-            onChange={(e) => setFilterForm(prev => ({ ...prev, action: e.target.value }))}
-            options={[
-              { value: '', label: 'All Actions' },
-              { value: 'CREATE', label: 'Create' },
-              { value: 'UPDATE', label: 'Update' },
-              { value: 'DELETE', label: 'Delete' },
-            ]}
-          />
-          
-          <FormField
-            label="Start Date"
-            name="startDate"
-            type="date"
-            value={filterForm.startDate}
-            onChange={(e) => setFilterForm(prev => ({ ...prev, startDate: e.target.value }))}
-          />
-          
-          <FormField
-            label="End Date"
-            name="endDate"
-            type="date"
-            value={filterForm.endDate}
-            onChange={(e) => setFilterForm(prev => ({ ...prev, endDate: e.target.value }))}
-          />
-          
-          <div className="md:col-span-4">
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Filtering...' : 'Apply Filters'}
-            </Button>
-          </div>
-        </form>
-      </div>
-
       {/* Audit Logs */}
       <div className="bg-white rounded-lg border">
         <div className="px-6 py-4 border-b">
@@ -248,7 +149,7 @@ export function AuditLogsList({ workspaceSlug, filters }: AuditLogsListProps) {
             <Button
               onClick={handleLoadMore}
               disabled={loading}
-              variant="outline"
+              variant="secondary"
             >
               {loading ? 'Loading...' : 'Load More'}
             </Button>

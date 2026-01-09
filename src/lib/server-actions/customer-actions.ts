@@ -19,15 +19,34 @@ import {
 import { buildAdvancedFilters, type AdvancedFilterOptions } from '@/lib/utils/search-optimization';
 
 // Input schema for customer creation with workspace context
-const createCustomerInputSchema = createCustomerSchema.extend({
+const createCustomerInputSchema = z.object({
+  name: z.string().min(1, 'Customer name is required').max(255, 'Customer name must be less than 255 characters'),
+  email: z.string().email({ message: 'Please enter a valid email address' }).optional().or(z.literal('')),
+  phone: z.string().max(50, 'Phone number must be less than 50 characters').optional().or(z.literal('')),
+  address: z.string().optional().or(z.literal('')),
   workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
-});
+}).transform((data) => ({
+  ...data,
+  email: data.email === '' ? null : data.email,
+  phone: data.phone === '' ? null : data.phone,
+  address: data.address === '' ? null : data.address,
+}));
 
 // Input schema for customer update with IDs
-const updateCustomerInputSchema = updateCustomerSchema.extend({
+const updateCustomerInputSchema = z.object({
   id: z.string().uuid({ message: 'Invalid customer ID' }),
   workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
-});
+  name: z.string().min(1, 'Customer name is required').max(255, 'Customer name must be less than 255 characters').optional(),
+  email: z.string().email({ message: 'Please enter a valid email address' }).optional().or(z.literal('')),
+  phone: z.string().max(50, 'Phone number must be less than 50 characters').optional().or(z.literal('')),
+  address: z.string().optional().or(z.literal('')),
+  archived: z.boolean().optional(),
+}).transform((data) => ({
+  ...data,
+  email: data.email === '' ? null : data.email,
+  phone: data.phone === '' ? null : data.phone,
+  address: data.address === '' ? null : data.address,
+}));
 
 // Input schema for customer deletion
 const deleteCustomerInputSchema = z.object({
@@ -120,7 +139,7 @@ export const updateCustomer = createWorkspaceAction(
       }
 
       // Check for name conflicts if name is being updated
-      if (updateData.name && updateData.name !== existingCustomer.name) {
+      if (updateData.name && updateData.name !== (existingCustomer as any).name) {
         const { data: nameConflict } = await context.supabase
           .from('customers')
           .select('id')
@@ -138,8 +157,8 @@ export const updateCustomer = createWorkspaceAction(
       // Update customer with audit fields
       const customerData = addAuditFields(updateData, context.user.id, true);
 
-      const { data: customer, error } = await context.supabase
-        .from('customers')
+      const { data: customer, error } = await (context.supabase
+        .from('customers') as any)
         .update(customerData)
         .eq('id', id)
         .eq('workspace_id', workspace_id)
@@ -184,7 +203,7 @@ export const archiveCustomer = createWorkspaceAction(
         return createErrorResponse('Customer not found');
       }
 
-      if (existingCustomer.archived === archived) {
+      if ((existingCustomer as any).archived === archived) {
         return createErrorResponse(
           archived ? 'Customer is already archived' : 'Customer is already active'
         );
@@ -201,8 +220,8 @@ export const archiveCustomer = createWorkspaceAction(
         true
       );
 
-      const { data: customer, error } = await context.supabase
-        .from('customers')
+      const { data: customer, error } = await (context.supabase
+        .from('customers') as any)
         .update(updateData)
         .eq('id', id)
         .eq('workspace_id', workspace_id)
@@ -311,7 +330,16 @@ export const getCustomers = createWorkspaceAction(
         .orderBy('created_at', 'desc')
         .paginate({ page, limit });
 
-      return createSuccessResponse(result);
+      // Transform the result to match the expected format
+      const transformedResult = {
+        customers: result.data,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        hasMore: result.hasMore
+      };
+
+      return createSuccessResponse(transformedResult);
     } catch (error) {
       console.error('Error fetching customers:', error);
       return createErrorResponse('Failed to fetch customers');
@@ -496,9 +524,9 @@ export const getCustomerSuggestions = createWorkspaceAction(
       }
 
       const suggestions = (customers || []).map(customer => ({
-        id: customer.id,
-        name: customer.name,
-        email: customer.email,
+        id: (customer as any).id,
+        name: (customer as any).name,
+        email: (customer as any).email,
         type: 'customer' as const,
       }));
 

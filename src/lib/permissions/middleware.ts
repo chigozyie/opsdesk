@@ -11,7 +11,7 @@ import {
   hasPermission, 
   hasRequiredRole, 
   requirePermission, 
-  requireRole,
+  requireRole as checkRequiredRole,
   PermissionError,
   InsufficientRoleError,
   ADMIN_ONLY_OPERATIONS
@@ -280,7 +280,7 @@ export async function checkResourceAccess(
       return false;
     }
 
-    return data.workspace_id === context.workspace.id;
+    return (data as any).workspace_id === context.workspace.id;
   } catch (error) {
     console.error('Error checking resource access:', error);
     return false;

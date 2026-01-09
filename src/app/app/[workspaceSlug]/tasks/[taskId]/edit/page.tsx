@@ -31,10 +31,13 @@ async function EditTaskContent({ params }: EditTaskPageProps) {
     redirect('/workspace/select');
   }
 
+  // TypeScript doesn't understand that workspace is non-null after the check above
+  const workspaceData = workspace as { id: string; name: string };
+
   const { data: membership } = await supabase
     .from('workspace_members')
     .select('role')
-    .eq('workspace_id', workspace.id)
+    .eq('workspace_id', workspaceData.id)
     .eq('user_id', user.id)
     .single();
 
@@ -42,15 +45,18 @@ async function EditTaskContent({ params }: EditTaskPageProps) {
     redirect('/workspace/select');
   }
 
+  // TypeScript doesn't understand that membership is non-null after the check above
+  const membershipData = membership as { role: string };
+
   // Check permissions
-  if (membership.role === 'viewer') {
+  if (membershipData.role === 'viewer') {
     redirect(`/app/${params.workspaceSlug}/tasks`);
   }
 
   // Get task
   const taskResult = await getTask({
     id: params.taskId,
-    workspace_id: workspace.id,
+    workspace_id: workspaceData.id,
   });
 
   if (!taskResult.success || !taskResult.data) {
@@ -70,7 +76,7 @@ async function EditTaskContent({ params }: EditTaskPageProps) {
         email
       )
     `)
-    .eq('workspace_id', workspace.id);
+    .eq('workspace_id', workspaceData.id);
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -83,7 +89,7 @@ async function EditTaskContent({ params }: EditTaskPageProps) {
 
       <div className="bg-white shadow rounded-lg p-6">
         <TaskForm
-          workspaceId={workspace.id}
+          workspaceId={workspaceData.id}
           workspaceSlug={params.workspaceSlug}
           mode="edit"
           task={task}

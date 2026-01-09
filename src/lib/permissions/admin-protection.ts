@@ -302,8 +302,8 @@ export async function logAdminOperation(
  */
 export function withAdminOperationLogging<TInput, TOutput>(
   operation: string,
-  resourceType?: string,
-  action: (input: TInput, context: ServerActionContext) => Promise<EnhancedServerActionResult<TOutput>>
+  action: (input: TInput, context: ServerActionContext) => Promise<EnhancedServerActionResult<TOutput>>,
+  resourceType?: string
 ) {
   return async (input: TInput, context: ServerActionContext): Promise<EnhancedServerActionResult<TOutput>> => {
     // Log the operation attempt
