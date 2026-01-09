@@ -76,7 +76,14 @@ CREATE POLICY "Users can view workspace members for their workspaces" ON workspa
   FOR SELECT USING (is_workspace_member(workspace_id));
 
 CREATE POLICY "Admins can manage workspace members" ON workspace_members
-  FOR INSERT WITH CHECK (is_workspace_admin(workspace_id));
+  FOR INSERT WITH CHECK (
+    is_workspace_admin(workspace_id) OR 
+    (user_id = auth.uid() AND EXISTS (
+      SELECT 1 FROM workspaces 
+      WHERE workspaces.id = workspace_members.workspace_id 
+      AND workspaces.created_by = auth.uid()
+    ))
+  );
 
 CREATE POLICY "Admins can update workspace members" ON workspace_members
   FOR UPDATE USING (is_workspace_admin(workspace_id));

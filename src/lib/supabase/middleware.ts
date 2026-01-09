@@ -32,6 +32,54 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Handle workspace routing and access validation
+  if (user && request.nextUrl.pathname.startsWith('/app/')) {
+    const pathSegments = request.nextUrl.pathname.split('/');
+    const workspaceSlug = pathSegments[2];
+
+    if (workspaceSlug) {
+      // Validate workspace access
+      const { data: workspace } = await supabase
+        .from('workspaces')
+        .select(`
+          id,
+          slug,
+          workspace_members!inner (
+            role
+          )
+        `)
+        .eq('slug', workspaceSlug)
+        .eq('workspace_members.user_id', user.id)
+        .single();
+
+      // If user doesn't have access to this workspace, redirect to workspace selection
+      if (!workspace) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/workspace/select';
+        return NextResponse.redirect(url);
+      }
+
+      // Add workspace context to headers for downstream components
+      const response = NextResponse.next({
+        request: {
+          headers: new Headers(request.headers),
+        },
+      });
+      
+      response.headers.set('x-workspace-id', (workspace as any).id);
+      response.headers.set('x-workspace-slug', workspaceSlug);
+      response.headers.set('x-user-role', (workspace as any).workspace_members[0]?.role || 'viewer');
+      
+      // Copy over the cookies from supabase response
+      const cookies = supabaseResponse.cookies.getAll();
+      cookies.forEach(cookie => {
+        response.cookies.set(cookie.name, cookie.value, cookie);
+      });
+      
+      return response;
+    }
+  }
+
   // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
   // creating a new response object with NextResponse.next() make sure to:
   // 1. Pass the request in it, like so:

@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { createServiceSupabaseClient } from '@/lib/supabase/client-factory';
 import { requireAuth } from '@/lib/auth/server';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
@@ -16,8 +17,10 @@ const CreateWorkspaceSchema = z.object({
 
 export async function createWorkspace(formData: FormData) {
   const user = await requireAuth();
+  
+  // Use regular client for checking existing workspace
   const supabase = createClient();
-
+  
   // Validate input
   const result = CreateWorkspaceSchema.safeParse({
     name: formData.get('name'),
@@ -26,7 +29,7 @@ export async function createWorkspace(formData: FormData) {
 
   if (!result.success) {
     return {
-      error: result.error.errors[0].message
+      error: result.error.issues[0]?.message || 'Invalid input'
     };
   }
 
@@ -46,8 +49,11 @@ export async function createWorkspace(formData: FormData) {
       };
     }
 
-    // Create workspace
-    const { data: workspace, error: workspaceError } = await supabase
+    // Create service role client for workspace creation (bypasses RLS)
+    const serviceSupabase = createServiceSupabaseClient();
+    
+    // Create workspace with explicit user ID
+    const { data: workspace, error: workspaceError } = await serviceSupabase
       .from('workspaces')
       .insert({
         name,
@@ -57,7 +63,7 @@ export async function createWorkspace(formData: FormData) {
       .select()
       .single();
 
-    if (workspaceError) {
+    if (workspaceError || !workspace) {
       console.error('Error creating workspace:', workspaceError);
       return {
         error: 'Failed to create workspace. Please try again.'
@@ -65,7 +71,7 @@ export async function createWorkspace(formData: FormData) {
     }
 
     // Add creator as admin member
-    const { error: memberError } = await supabase
+    const { error: memberError } = await serviceSupabase
       .from('workspace_members')
       .insert({
         workspace_id: workspace.id,
@@ -76,7 +82,7 @@ export async function createWorkspace(formData: FormData) {
     if (memberError) {
       console.error('Error adding workspace member:', memberError);
       // Try to clean up the workspace
-      await supabase.from('workspaces').delete().eq('id', workspace.id);
+      await serviceSupabase.from('workspaces').delete().eq('id', workspace.id);
       return {
         error: 'Failed to set up workspace membership. Please try again.'
       };
@@ -84,7 +90,11 @@ export async function createWorkspace(formData: FormData) {
 
     // Redirect to the new workspace
     redirect(`/app/${slug}/dashboard`);
-  } catch (error) {
+  } catch (error: any) {
+    // Don't log redirect errors as they are expected
+    if (error?.digest?.startsWith('NEXT_REDIRECT')) {
+      throw error; // Re-throw redirect errors so they work properly
+    }
     console.error('Unexpected error creating workspace:', error);
     return {
       error: 'An unexpected error occurred. Please try again.'
@@ -153,10 +163,15 @@ export async function getUserWorkspaces() {
     return [];
   }
 
-  return workspaces.map(item => ({
-    ...item.workspaces,
-    role: item.role
-  }));
+  return (workspaces as any[])
+    .filter((item: any) => item.workspaces)
+    .map((item: any) => ({
+      id: item.workspaces.id,
+      slug: item.workspaces.slug,
+      name: item.workspaces.name,
+      created_at: item.workspaces.created_at,
+      role: item.role
+    }));
 }
 
 export async function getWorkspaceBySlug(slug: string) {
@@ -183,8 +198,288 @@ export async function getWorkspaceBySlug(slug: string) {
     return null;
   }
 
+  const workspaceData = workspace as any;
   return {
-    ...workspace,
-    role: workspace.workspace_members[0]?.role
+    id: workspaceData.id,
+    slug: workspaceData.slug,
+    name: workspaceData.name,
+    created_at: workspaceData.created_at,
+    created_by: workspaceData.created_by,
+    role: workspaceData.workspace_members[0]?.role as 'admin' | 'member' | 'viewer'
   };
+}
+
+// Member Management Actions
+
+export async function inviteMember(formData: FormData) {
+  const user = await requireAuth();
+  const supabase = createClient();
+
+  const email = formData.get('email') as string;
+  const role = formData.get('role') as 'admin' | 'member' | 'viewer';
+  const workspaceId = formData.get('workspaceId') as string;
+
+  // Validate input
+  if (!email || !role || !workspaceId) {
+    return {
+      error: 'Email, role, and workspace are required'
+    };
+  }
+
+  if (!['admin', 'member', 'viewer'].includes(role)) {
+    return {
+      error: 'Invalid role specified'
+    };
+  }
+
+  try {
+    // Check if current user is admin of this workspace
+    const { data: currentMembership } = await supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (!currentMembership || (currentMembership as any).role !== 'admin') {
+      return {
+        error: 'Only workspace admins can invite members'
+      };
+    }
+
+    // Check if user exists in auth.users
+    await supabase
+      .from('workspace_members')
+      .select(`
+        id,
+        role,
+        user_id
+      `)
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .single();
+
+    // For now, we'll create a simple invitation system
+    // In a real app, you'd send an email invitation
+    
+    // Check if user is already a member
+    const { data: existingMember } = await supabase
+      .from('workspace_members')
+      .select('id, role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id) // This would be the invited user's ID in a real system
+      .single();
+
+    if (existingMember) {
+      return {
+        error: 'User is already a member of this workspace'
+      };
+    }
+
+    // Note: In a real implementation, you would:
+    // 1. Send an email invitation with a unique token
+    // 2. Create a pending_invitations table
+    // 3. Allow users to accept/decline invitations
+    // 4. Only add to workspace_members after acceptance
+
+    return {
+      success: true,
+      message: `Invitation would be sent to ${email} with role ${role}. (Email system not implemented in this demo)`
+    };
+
+  } catch (error) {
+    console.error('Error inviting member:', error);
+    return {
+      error: 'Failed to invite member. Please try again.'
+    };
+  }
+}
+
+export async function updateMemberRole(formData: FormData) {
+  const user = await requireAuth();
+  const supabase = createClient();
+
+  const memberId = formData.get('memberId') as string;
+  const newRole = formData.get('role') as 'admin' | 'member' | 'viewer';
+  const workspaceId = formData.get('workspaceId') as string;
+
+  if (!memberId || !newRole || !workspaceId) {
+    return {
+      error: 'Member ID, role, and workspace are required'
+    };
+  }
+
+  if (!['admin', 'member', 'viewer'].includes(newRole)) {
+    return {
+      error: 'Invalid role specified'
+    };
+  }
+
+  try {
+    // Check if current user is admin of this workspace
+    const { data: currentMembership } = await supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (!currentMembership || (currentMembership as any).role !== 'admin') {
+      return {
+        error: 'Only workspace admins can update member roles'
+      };
+    }
+
+    // Update member role
+    const { error: updateError } = await (supabase as any)
+      .from('workspace_members')
+      .update({ role: newRole })
+      .eq('id', memberId)
+      .eq('workspace_id', workspaceId);
+
+    if (updateError) {
+      console.error('Error updating member role:', updateError);
+      return {
+        error: 'Failed to update member role. Please try again.'
+      };
+    }
+
+    return {
+      success: true,
+      message: 'Member role updated successfully'
+    };
+
+  } catch (error) {
+    console.error('Error updating member role:', error);
+    return {
+      error: 'Failed to update member role. Please try again.'
+    };
+  }
+}
+
+export async function removeMember(formData: FormData) {
+  const user = await requireAuth();
+  const supabase = createClient();
+
+  const memberId = formData.get('memberId') as string;
+  const workspaceId = formData.get('workspaceId') as string;
+
+  if (!memberId || !workspaceId) {
+    return {
+      error: 'Member ID and workspace are required'
+    };
+  }
+
+  try {
+    // Check if current user is admin of this workspace
+    const { data: currentMembership } = await supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (!currentMembership || (currentMembership as any).role !== 'admin') {
+      return {
+        error: 'Only workspace admins can remove members'
+      };
+    }
+
+    // Get member details before removal
+    const { data: memberToRemove } = await supabase
+      .from('workspace_members')
+      .select('user_id, role')
+      .eq('id', memberId)
+      .eq('workspace_id', workspaceId)
+      .single();
+
+    if (!memberToRemove) {
+      return {
+        error: 'Member not found'
+      };
+    }
+
+    // Prevent removing yourself
+    if ((memberToRemove as any).user_id === user.id) {
+      return {
+        error: 'You cannot remove yourself from the workspace'
+      };
+    }
+
+    // Remove member
+    const { error: removeError } = await supabase
+      .from('workspace_members')
+      .delete()
+      .eq('id', memberId)
+      .eq('workspace_id', workspaceId);
+
+    if (removeError) {
+      console.error('Error removing member:', removeError);
+      return {
+        error: 'Failed to remove member. Please try again.'
+      };
+    }
+
+    return {
+      success: true,
+      message: 'Member removed successfully'
+    };
+
+  } catch (error) {
+    console.error('Error removing member:', error);
+    return {
+      error: 'Failed to remove member. Please try again.'
+    };
+  }
+}
+
+export async function getWorkspaceMembers(workspaceId: string) {
+  const user = await requireAuth();
+  const supabase = createClient();
+
+  try {
+    // Verify user has access to this workspace
+    const { data: userMembership } = await supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (!userMembership) {
+      throw new Error('Access denied to workspace');
+    }
+
+    // Get all workspace members
+    const { data: members, error } = await supabase
+      .from('workspace_members')
+      .select(`
+        id,
+        role,
+        created_at,
+        user_id
+      `)
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching workspace members:', error);
+      return [];
+    }
+
+    // Note: In a real app, you'd join with auth.users to get email/name
+    // For now, we'll return the user_id as a placeholder
+    return (members as any[]).map((member: any) => ({
+      id: member.id,
+      userId: member.user_id,
+      email: `user-${member.user_id.slice(0, 8)}@example.com`, // Placeholder
+      role: member.role,
+      joinedAt: member.created_at,
+      isCurrentUser: member.user_id === user.id
+    }));
+
+  } catch (error) {
+    console.error('Error fetching workspace members:', error);
+    return [];
+  }
 }

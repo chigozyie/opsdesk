@@ -34,24 +34,28 @@ export function WorkspaceCreationForm() {
     setError(null);
     
     startTransition(async () => {
-      const result = await createWorkspace(formData);
-      if (result?.error) {
-        setError(result.error);
+      try {
+        const result = await createWorkspace(formData);
+        if (result?.error) {
+          setError(result.error);
+        }
+        // If we get here without an error, the action completed successfully
+        // The redirect will happen automatically
+      } catch (error: any) {
+        // Check if this is a Next.js redirect (which is expected and means success)
+        if (error?.digest?.startsWith('NEXT_REDIRECT')) {
+          // This is a successful redirect, let it happen
+          throw error;
+        }
+        // Only show error for actual errors, not redirects
+        console.error('Form submission error:', error);
+        setError('An unexpected error occurred. Please try again.');
       }
     });
   };
 
   return (
     <form action={handleSubmit} className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          Create Your Workspace
-        </h2>
-        <p className="text-gray-600 mb-6">
-          Set up your business workspace to get started with BizDesk.
-        </p>
-      </div>
-
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
           <p className="text-red-800 text-sm">{error}</p>
@@ -60,6 +64,7 @@ export function WorkspaceCreationForm() {
 
       <FormField
         label="Workspace Name"
+        id="name"
         name="name"
         type="text"
         placeholder="My Business"
@@ -69,17 +74,22 @@ export function WorkspaceCreationForm() {
         disabled={isPending}
       />
 
-      <FormField
-        label="Workspace URL"
-        name="slug"
-        type="text"
-        placeholder="my-business"
-        value={slug}
-        onChange={(e) => setSlug(e.target.value)}
-        required
-        disabled={isPending || isGeneratingSlug}
-        helperText={`Your workspace will be available at: bizdesk.com/app/${slug || 'your-workspace'}`}
-      />
+      <div>
+        <FormField
+          label="Workspace URL"
+          id="slug"
+          name="slug"
+          type="text"
+          placeholder="my-business"
+          value={slug}
+          onChange={(e) => setSlug(e.target.value)}
+          required
+          disabled={isPending || isGeneratingSlug}
+        />
+        <p className="mt-1 text-sm text-gray-500">
+          Your workspace will be available at: bizdesk.com/app/{slug || 'your-workspace'}
+        </p>
+      </div>
 
       <Button
         type="submit"

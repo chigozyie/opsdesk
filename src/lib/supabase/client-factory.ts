@@ -39,6 +39,24 @@ export function createServerSupabaseClient() {
   );
 }
 
+// Service role client factory (bypasses RLS)
+export function createServiceSupabaseClient() {
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return [];
+        },
+        setAll() {
+          // No-op for service role client
+        },
+      },
+    }
+  );
+}
+
 // Middleware client factory (for middleware with NextRequest)
 export function createMiddlewareSupabaseClient(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
