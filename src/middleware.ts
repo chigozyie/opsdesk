@@ -1,8 +1,29 @@
 import { updateSession } from '@/lib/supabase/middleware';
-import { NextRequest } from 'next/server';
+import { securityMiddleware } from '@/lib/middleware/security-middleware';
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+  // Apply security middleware first
+  const securityResponse = await securityMiddleware(request);
+  
+  // If security middleware returns a response (e.g., rate limit exceeded), return it
+  if (securityResponse.status !== 200) {
+    return securityResponse;
+  }
+
+  // Apply Supabase session middleware
+  const sessionResponse = await updateSession(request);
+  
+  // Merge security headers with session response
+  if (sessionResponse) {
+    // Copy security headers to the session response
+    securityResponse.headers.forEach((value, key) => {
+      sessionResponse.headers.set(key, value);
+    });
+    return sessionResponse;
+  }
+
+  return securityResponse;
 }
 
 export const config = {

@@ -16,6 +16,7 @@ import {
   customerFilterSchema,
   type Customer 
 } from '@/lib/validation/schemas/customer';
+import { buildAdvancedFilters, type AdvancedFilterOptions } from '@/lib/utils/search-optimization';
 
 // Input schema for customer creation with workspace context
 const createCustomerInputSchema = createCustomerSchema.extend({
@@ -298,43 +299,19 @@ export const getCustomers = createWorkspaceAction(
   }>> => {
     try {
       const { workspace_id, search, archived, page, limit } = input;
-      const offset = (page - 1) * limit;
 
-      let query = context.supabase
-        .from('customers')
-        .select('*', { count: 'exact' })
-        .eq('workspace_id', workspace_id);
+      // Use the optimized paginated query builder
+      const { createPaginatedQuery } = await import('@/lib/utils/database-pagination');
+      
+      const result = await createPaginatedQuery<Customer>(context.supabase, 'customers')
+        .select('*')
+        .workspace(workspace_id)
+        .search(search || '', ['name', 'email', 'phone'])
+        .filter('archived', archived)
+        .orderBy('created_at', 'desc')
+        .paginate({ page, limit });
 
-      // Apply filters
-      if (typeof archived === 'boolean') {
-        query = query.eq('archived', archived);
-      }
-
-      if (search) {
-        query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
-      }
-
-      // Apply pagination and ordering
-      query = query
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-
-      const { data: customers, error, count } = await query;
-
-      if (error) {
-        return handleDatabaseError(error, 'fetch customers');
-      }
-
-      const total = count || 0;
-      const hasMore = offset + limit < total;
-
-      return createSuccessResponse({
-        customers: customers as Customer[],
-        total,
-        page,
-        limit,
-        hasMore,
-      });
+      return createSuccessResponse(result);
     } catch (error) {
       console.error('Error fetching customers:', error);
       return createErrorResponse('Failed to fetch customers');
@@ -372,6 +349,163 @@ export const getCustomer = createWorkspaceAction(
     } catch (error) {
       console.error('Error fetching customer:', error);
       return createErrorResponse('Failed to fetch customer');
+    }
+  },
+  {
+    requiredRole: 'viewer',
+  }
+);
+
+/**
+ * Enhanced customer search with advanced filtering and relevance scoring
+ */
+export const searchCustomersAdvanced = createWorkspaceAction(
+  z.object({
+    workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
+    search: z.string().optional(),
+    archived: z.boolean().optional(),
+    created_from: z.string().optional(),
+    created_to: z.string().optional(),
+    sort_by: z.enum(['name', 'email', 'created_at', 'updated_at']).default('created_at'),
+    sort_direction: z.enum(['asc', 'desc']).default('desc'),
+    page: z.number().int().min(1).default(1),
+    limit: z.number().int().min(1).max(100).default(20),
+    fuzzy_search: z.boolean().default(false),
+  }),
+  async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<{
+    customers: Customer[];
+    total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+    searchAnalytics?: {
+      executionTime: number;
+      resultCount: number;
+    };
+  }>> => {
+    try {
+      const startTime = Date.now();
+      const { 
+        workspace_id, 
+        search, 
+        archived, 
+        created_from, 
+        created_to,
+        sort_by,
+        sort_direction,
+        page, 
+        limit,
+        fuzzy_search
+      } = input;
+
+      // Build advanced filter options
+      const filterOptions: AdvancedFilterOptions = {
+        search: search ? {
+          query: search,
+          fields: ['name', 'email', 'phone', 'address'],
+          fuzzyMatch: fuzzy_search,
+        } : undefined,
+        filters: {
+          archived: archived,
+        },
+        dateRanges: {
+          created_at: {
+            from: created_from,
+            to: created_to,
+          },
+        },
+        sortBy: sort_by,
+        sortDirection: sort_direction,
+      };
+
+      // Start with base query
+      let query = context.supabase
+        .from('customers')
+        .select('*', { count: 'exact' })
+        .eq('workspace_id', workspace_id);
+
+      // Apply advanced filters
+      query = buildAdvancedFilters(query, filterOptions);
+
+      // Apply pagination
+      const offset = (page - 1) * limit;
+      query = query.range(offset, offset + limit - 1);
+
+      const { data: customers, error, count } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      const executionTime = Date.now() - startTime;
+      const total = count || 0;
+      const hasMore = offset + limit < total;
+
+      return createSuccessResponse({
+        customers: customers as Customer[],
+        total,
+        page,
+        limit,
+        hasMore,
+        searchAnalytics: {
+          executionTime,
+          resultCount: customers?.length || 0,
+        },
+      });
+    } catch (error) {
+      console.error('Error in advanced customer search:', error);
+      return createErrorResponse('Failed to search customers');
+    }
+  },
+  {
+    requiredRole: 'viewer',
+  }
+);
+
+/**
+ * Get customer search suggestions for autocomplete
+ */
+export const getCustomerSuggestions = createWorkspaceAction(
+  z.object({
+    workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
+    query: z.string().min(1, 'Query is required'),
+    limit: z.number().int().min(1).max(20).default(10),
+  }),
+  async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<{
+    suggestions: Array<{
+      id: string;
+      name: string;
+      email?: string;
+      type: 'customer';
+    }>;
+  }>> => {
+    try {
+      const { workspace_id, query, limit } = input;
+
+      const { data: customers, error } = await context.supabase
+        .from('customers')
+        .select('id, name, email')
+        .eq('workspace_id', workspace_id)
+        .eq('archived', false)
+        .or(`name.ilike.%${query}%,email.ilike.%${query}%`)
+        .order('name')
+        .limit(limit);
+
+      if (error) {
+        throw error;
+      }
+
+      const suggestions = (customers || []).map(customer => ({
+        id: customer.id,
+        name: customer.name,
+        email: customer.email,
+        type: 'customer' as const,
+      }));
+
+      return createSuccessResponse({ suggestions });
+    } catch (error) {
+      console.error('Error getting customer suggestions:', error);
+      return createErrorResponse('Failed to get customer suggestions');
     }
   },
   {

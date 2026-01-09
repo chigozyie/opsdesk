@@ -18,6 +18,7 @@ import {
   type Invoice,
   type InvoiceStatus 
 } from '@/lib/validation/schemas/invoice';
+import { buildAdvancedFilters, type AdvancedFilterOptions } from '@/lib/utils/search-optimization';
 
 // Input schema for invoice creation with workspace context
 const createInvoiceInputSchema = createInvoiceSchema.extend({
@@ -430,59 +431,25 @@ export const getInvoices = createWorkspaceAction(
   }>> => {
     try {
       const { workspace_id, search, status, customer_id, date_from, date_to, page, limit } = input;
-      const offset = (page - 1) * limit;
 
-      let query = context.supabase
-        .from('invoices')
+      // Use the optimized paginated query builder
+      const { createPaginatedQuery } = await import('@/lib/utils/database-pagination');
+      
+      const result = await createPaginatedQuery<Invoice>(context.supabase, 'invoices')
         .select(`
           *,
           customer:customers(id, name, email),
           line_items:invoice_line_items(*)
-        `, { count: 'exact' })
-        .eq('workspace_id', workspace_id);
+        `)
+        .workspace(workspace_id)
+        .search(search || '', ['invoice_number', 'notes'])
+        .filter('status', status)
+        .filter('customer_id', customer_id)
+        .dateRange('issue_date', date_from, date_to)
+        .orderBy('created_at', 'desc')
+        .paginate({ page, limit });
 
-      // Apply filters
-      if (status) {
-        query = query.eq('status', status);
-      }
-
-      if (customer_id) {
-        query = query.eq('customer_id', customer_id);
-      }
-
-      if (date_from) {
-        query = query.gte('issue_date', date_from);
-      }
-
-      if (date_to) {
-        query = query.lte('issue_date', date_to);
-      }
-
-      if (search) {
-        query = query.or(`invoice_number.ilike.%${search}%,notes.ilike.%${search}%`);
-      }
-
-      // Apply pagination and ordering
-      query = query
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-
-      const { data: invoices, error, count } = await query;
-
-      if (error) {
-        return handleDatabaseError(error, 'fetch invoices');
-      }
-
-      const total = count || 0;
-      const hasMore = offset + limit < total;
-
-      return createSuccessResponse({
-        invoices: invoices as Invoice[],
-        total,
-        page,
-        limit,
-        hasMore,
-      });
+      return createSuccessResponse(result);
     } catch (error) {
       console.error('Error fetching invoices:', error);
       return createErrorResponse('Failed to fetch invoices');
@@ -947,5 +914,190 @@ export const deleteInvoice = createWorkspaceAction(
     requiredRole: 'admin',
     auditAction: 'delete',
     auditResourceType: 'invoice',
+  }
+);
+/**
+ * Enhanced invoice search with advanced filtering and relevance scoring
+ */
+export const searchInvoicesAdvanced = createWorkspaceAction(
+  z.object({
+    workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
+    search: z.string().optional(),
+    status: invoiceStatusSchema.optional(),
+    customer_id: z.string().uuid().optional(),
+    date_from: z.string().optional(),
+    date_to: z.string().optional(),
+    amount_min: z.number().optional(),
+    amount_max: z.number().optional(),
+    sort_by: z.enum(['invoice_number', 'issue_date', 'due_date', 'total_amount', 'status', 'created_at']).default('created_at'),
+    sort_direction: z.enum(['asc', 'desc']).default('desc'),
+    page: z.number().int().min(1).default(1),
+    limit: z.number().int().min(1).max(100).default(20),
+    fuzzy_search: z.boolean().default(false),
+  }),
+  async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<{
+    invoices: Invoice[];
+    total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+    searchAnalytics?: {
+      executionTime: number;
+      resultCount: number;
+    };
+  }>> => {
+    try {
+      const startTime = Date.now();
+      const { 
+        workspace_id, 
+        search, 
+        status,
+        customer_id,
+        date_from, 
+        date_to,
+        amount_min,
+        amount_max,
+        sort_by,
+        sort_direction,
+        page, 
+        limit,
+        fuzzy_search
+      } = input;
+
+      // Build advanced filter options
+      const filterOptions: AdvancedFilterOptions = {
+        search: search ? {
+          query: search,
+          fields: ['invoice_number', 'notes'],
+          fuzzyMatch: fuzzy_search,
+        } : undefined,
+        filters: {
+          status: status,
+          customer_id: customer_id,
+        },
+        dateRanges: {
+          issue_date: {
+            from: date_from,
+            to: date_to,
+          },
+        },
+        numberRanges: {
+          total_amount: {
+            min: amount_min,
+            max: amount_max,
+          },
+        },
+        sortBy: sort_by,
+        sortDirection: sort_direction,
+      };
+
+      // Start with base query including customer data
+      let query = context.supabase
+        .from('invoices')
+        .select(`
+          *,
+          customers!inner(
+            id,
+            name,
+            email
+          )
+        `, { count: 'exact' })
+        .eq('workspace_id', workspace_id);
+
+      // Apply advanced filters
+      query = buildAdvancedFilters(query, filterOptions);
+
+      // Apply pagination
+      const offset = (page - 1) * limit;
+      query = query.range(offset, offset + limit - 1);
+
+      const { data: invoices, error, count } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      const executionTime = Date.now() - startTime;
+      const total = count || 0;
+      const hasMore = offset + limit < total;
+
+      return createSuccessResponse({
+        invoices: invoices as Invoice[],
+        total,
+        page,
+        limit,
+        hasMore,
+        searchAnalytics: {
+          executionTime,
+          resultCount: invoices?.length || 0,
+        },
+      });
+    } catch (error) {
+      console.error('Error in advanced invoice search:', error);
+      return createErrorResponse('Failed to search invoices');
+    }
+  },
+  {
+    requiredRole: 'viewer',
+  }
+);
+
+/**
+ * Get invoice search suggestions for autocomplete
+ */
+export const getInvoiceSuggestions = createWorkspaceAction(
+  z.object({
+    workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
+    query: z.string().min(1, 'Query is required'),
+    limit: z.number().int().min(1).max(20).default(10),
+  }),
+  async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<{
+    suggestions: Array<{
+      id: string;
+      invoice_number: string;
+      customer_name?: string;
+      total_amount: number;
+      status: string;
+      type: 'invoice';
+    }>;
+  }>> => {
+    try {
+      const { workspace_id, query, limit } = input;
+
+      const { data: invoices, error } = await context.supabase
+        .from('invoices')
+        .select(`
+          id,
+          invoice_number,
+          total_amount,
+          status,
+          customers!inner(name)
+        `)
+        .eq('workspace_id', workspace_id)
+        .or(`invoice_number.ilike.%${query}%,notes.ilike.%${query}%`)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        throw error;
+      }
+
+      const suggestions = (invoices || []).map(invoice => ({
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        customer_name: invoice.customers?.name,
+        total_amount: invoice.total_amount,
+        status: invoice.status,
+        type: 'invoice' as const,
+      }));
+
+      return createSuccessResponse({ suggestions });
+    } catch (error) {
+      console.error('Error getting invoice suggestions:', error);
+      return createErrorResponse('Failed to get invoice suggestions');
+    }
+  },
+  {
+    requiredRole: 'viewer',
   }
 );

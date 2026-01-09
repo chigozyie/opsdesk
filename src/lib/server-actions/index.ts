@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { requireAuth } from '@/lib/auth/server';
 import { createClient } from '@/lib/supabase/server';
 import { validateData, type ValidationResult, type ServerActionResult } from '@/lib/validation/utils';
+import { auditLogger, type AuditLogEntry } from '@/lib/services/audit-logger';
+import { securityService } from '@/lib/services/security-service';
+import { headers } from 'next/headers';
 
 /**
  * Enhanced server action result with audit trail support
@@ -42,6 +45,12 @@ export interface ServerActionConfig {
   requiredRole?: 'admin' | 'member' | 'viewer';
   auditAction?: string;
   auditResourceType?: string;
+  enableAuditLogging?: boolean;
+  enableRateLimit?: boolean;
+  rateLimitAttempts?: number;
+  rateLimitWindowMinutes?: number;
+  enableSecurityChecks?: boolean;
+  sanitizeInput?: boolean;
 }
 
 /**
@@ -64,7 +73,35 @@ export function createServerAction<TInput, TOutput>(
         };
       }
 
-      // Step 2: Authenticate user
+      // Step 2: Security checks
+      if (config.enableSecurityChecks !== false) {
+        // Sanitize input if enabled
+        if (config.sanitizeInput !== false) {
+          validation.data = securityService.sanitizeInput(validation.data);
+        }
+
+        // Validate SQL parameters
+        if (!securityService.validateSqlParams(validation.data || {})) {
+          await securityService.logSecurityEvent(
+            'SQL_INJECTION_ATTEMPT',
+            'unknown',
+            { input: validation.data }
+          );
+          return {
+            success: false,
+            message: 'Invalid input parameters',
+            errors: [
+              {
+                field: 'security',
+                message: 'Invalid input parameters detected',
+                code: 'security_violation',
+              },
+            ],
+          };
+        }
+      }
+
+      // Step 3: Authenticate user
       let user;
       try {
         user = await requireAuth();
@@ -82,14 +119,38 @@ export function createServerAction<TInput, TOutput>(
         };
       }
 
-      // Step 3: Initialize context
+      // Step 4: Rate limiting check
+      if (config.enableRateLimit && config.auditAction) {
+        const rateLimit = await securityService.checkRateLimit(
+          user.id,
+          config.auditAction,
+          config.rateLimitWindowMinutes || 5,
+          config.rateLimitAttempts || 10
+        );
+
+        if (!rateLimit.allowed) {
+          return {
+            success: false,
+            message: 'Rate limit exceeded. Please try again later.',
+            errors: [
+              {
+                field: 'rate_limit',
+                message: `Too many attempts. Try again after ${rateLimit.resetTime.toLocaleTimeString()}`,
+                code: 'rate_limit_exceeded',
+              },
+            ],
+          };
+        }
+      }
+
+      // Step 5: Initialize context
       const supabase = createClient();
       const context: ServerActionContext = {
         user,
         supabase,
       };
 
-      // Step 4: Handle workspace requirements
+      // Step 6: Handle workspace requirements
       if (config.requireWorkspace) {
         const workspaceData = await getWorkspaceFromInput(validation.data, supabase, user.id);
         if (!workspaceData.success) {
@@ -101,7 +162,7 @@ export function createServerAction<TInput, TOutput>(
         }
         context.workspace = workspaceData.data!;
 
-        // Step 5: Check role permissions
+        // Step 7: Check role permissions
         if (config.requiredRole && !hasRequiredRole(context.workspace.role, config.requiredRole)) {
           return {
             success: false,
@@ -115,27 +176,85 @@ export function createServerAction<TInput, TOutput>(
             ],
           };
         }
+
+        // Step 8: Security monitoring for workspace actions
+        if (config.enableSecurityChecks !== false && context.workspace) {
+          const headersList = headers();
+          const ipAddress = headersList.get('x-forwarded-for') || 
+                           headersList.get('x-real-ip') || 
+                           'unknown';
+          const userAgent = headersList.get('user-agent') || 'unknown';
+
+          const suspiciousActivity = await securityService.detectSuspiciousActivity(
+            user.id,
+            context.workspace.id,
+            config.auditAction || 'ACTION',
+            {
+              ipAddress,
+              userAgent,
+              resourceType: config.auditResourceType,
+            }
+          );
+
+          if (suspiciousActivity.suspicious) {
+            console.warn('Suspicious activity detected:', suspiciousActivity.reasons);
+            // Continue with the action but log the suspicious activity
+          }
+        }
       }
 
-      // Step 6: Execute the action
+      // Step 9: Execute the action
       const result = await action(validation.data!, context);
 
-      // Step 7: Add audit trail if configured
-      if (config.auditAction && config.auditResourceType && context.workspace) {
-        const auditTrail = {
-          action: config.auditAction,
-          resourceType: config.auditResourceType,
-          resourceId: extractResourceId(result.data),
-          workspaceId: context.workspace.id,
-          userId: user.id,
-          timestamp: new Date().toISOString(),
-          changes: extractChanges(validation.data),
-        };
+      // Step 10: Add comprehensive audit trail if configured
+      if (config.enableAuditLogging && context.workspace) {
+        try {
+          // Get request metadata
+          const headersList = headers();
+          const ipAddress = headersList.get('x-forwarded-for') || 
+                           headersList.get('x-real-ip') || 
+                           'unknown';
+          const userAgent = headersList.get('user-agent') || 'unknown';
 
-        // Log audit trail (in a real app, you'd store this in an audit_logs table)
-        console.log('Audit Trail:', auditTrail);
-        
-        result.auditTrail = auditTrail;
+          // Determine audit action and resource type
+          const auditAction = config.auditAction || 'ACTION';
+          const auditResourceType = config.auditResourceType || 'UNKNOWN';
+          const resourceId = extractResourceId(result.data);
+
+          // Log the audit trail
+          await auditLogger.logAction(
+            context.workspace.id,
+            user.id,
+            auditAction,
+            auditResourceType,
+            resourceId,
+            {
+              input: sanitizeForAudit(validation.data),
+              result: result.success ? 'SUCCESS' : 'FAILURE',
+              message: result.message,
+            },
+            {
+              ipAddress,
+              userAgent,
+            }
+          );
+
+          // Add audit trail to response
+          const auditTrail = {
+            action: auditAction,
+            resourceType: auditResourceType,
+            resourceId,
+            workspaceId: context.workspace.id,
+            userId: user.id,
+            timestamp: new Date().toISOString(),
+            changes: sanitizeForAudit(validation.data),
+          };
+
+          result.auditTrail = auditTrail;
+        } catch (auditError) {
+          console.error('Audit logging failed:', auditError);
+          // Don't fail the main operation due to audit logging issues
+        }
       }
 
       return result;
@@ -337,6 +456,28 @@ function extractChanges(data: any): Record<string, any> {
 }
 
 /**
+ * Sanitizes data for audit logging by removing sensitive information
+ */
+function sanitizeForAudit(data: any): any {
+  if (!data || typeof data !== 'object') return data;
+  
+  const sensitiveFields = ['password', 'token', 'secret', 'api_key', 'private_key'];
+  const sanitized: any = Array.isArray(data) ? [] : {};
+  
+  for (const [key, value] of Object.entries(data)) {
+    if (sensitiveFields.some(field => key.toLowerCase().includes(field))) {
+      sanitized[key] = '[REDACTED]';
+    } else if (typeof value === 'object' && value !== null) {
+      sanitized[key] = sanitizeForAudit(value);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  
+  return sanitized;
+}
+
+/**
  * Converts string representations of numbers to actual numbers
  */
 function convertStringNumbers(obj: any): any {
@@ -468,3 +609,6 @@ export function addAuditFields(data: any, userId: string, isUpdate = false): any
 
 // Re-export payment actions
 export * from './payment-actions';
+
+// Re-export dashboard actions
+export * from './dashboard-actions';

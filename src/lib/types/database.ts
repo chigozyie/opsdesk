@@ -274,6 +274,48 @@ export interface Database {
           created_by?: string;
         };
       };
+      audit_logs: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          user_id: string | null;
+          action: string;
+          resource_type: string;
+          resource_id: string | null;
+          old_values: any | null;
+          new_values: any | null;
+          changes: any | null;
+          ip_address: string | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          user_id?: string | null;
+          action: string;
+          resource_type: string;
+          resource_id?: string | null;
+          old_values?: any | null;
+          new_values?: any | null;
+          changes?: any | null;
+          ip_address?: string | null;
+          user_agent?: string | null;
+        };
+        Update: {
+          id?: string;
+          workspace_id?: string;
+          user_id?: string | null;
+          action?: string;
+          resource_type?: string;
+          resource_id?: string | null;
+          old_values?: any | null;
+          new_values?: any | null;
+          changes?: any | null;
+          ip_address?: string | null;
+          user_agent?: string | null;
+        };
+      };
     };
     Views: {
       [_ in never]: never;

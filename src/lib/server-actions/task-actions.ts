@@ -19,6 +19,8 @@ import {
   bulkTaskOperationSchema,
   type Task
 } from '@/lib/validation/schemas/task';
+import { buildAdvancedFilters, type AdvancedFilterOptions } from '@/lib/utils/search-optimization';
+} from '@/lib/validation/schemas/task';
 
 // Input schema for task creation with workspace context
 const createTaskInputSchema = createTaskSchema.extend({
@@ -456,59 +458,22 @@ export const getTasks = createWorkspaceAction(
         page, 
         limit 
       } = input;
-      const offset = (page - 1) * limit;
 
-      let query = context.supabase
-        .from('tasks')
-        .select('*', { count: 'exact' })
-        .eq('workspace_id', workspace_id);
+      // Use the optimized paginated query builder
+      const { createPaginatedQuery } = await import('@/lib/utils/database-pagination');
+      
+      const result = await createPaginatedQuery<Task>(context.supabase, 'tasks')
+        .select('*')
+        .workspace(workspace_id)
+        .search(search || '', ['title', 'description'])
+        .filter('status', status)
+        .filter('assigned_to', assigned_to)
+        .filter('created_by', created_by)
+        .dateRange('due_date', due_date_from, due_date_to)
+        .orderBy('created_at', 'desc')
+        .paginate({ page, limit });
 
-      // Apply filters
-      if (status) {
-        query = query.eq('status', status);
-      }
-
-      if (assigned_to) {
-        query = query.eq('assigned_to', assigned_to);
-      }
-
-      if (created_by) {
-        query = query.eq('created_by', created_by);
-      }
-
-      if (due_date_from) {
-        query = query.gte('due_date', due_date_from);
-      }
-
-      if (due_date_to) {
-        query = query.lte('due_date', due_date_to);
-      }
-
-      if (search) {
-        query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
-      }
-
-      // Apply pagination and ordering
-      query = query
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1);
-
-      const { data: tasks, error, count } = await query;
-
-      if (error) {
-        return handleDatabaseError(error, 'fetch tasks');
-      }
-
-      const total = count || 0;
-      const hasMore = offset + limit < total;
-
-      return createSuccessResponse({
-        tasks: tasks as Task[],
-        total,
-        page,
-        limit,
-        hasMore,
-      });
+      return createSuccessResponse(result);
     } catch (error) {
       console.error('Error fetching tasks:', error);
       return createErrorResponse('Failed to fetch tasks');
@@ -595,5 +560,191 @@ export const deleteTask = createWorkspaceAction(
     requiredRole: 'member',
     auditAction: 'delete',
     auditResourceType: 'task',
+  }
+);
+/**
+ * Enhanced task search with advanced filtering and relevance scoring
+ */
+export const searchTasksAdvanced = createWorkspaceAction(
+  z.object({
+    workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
+    search: z.string().optional(),
+    status: z.enum(['pending', 'in_progress', 'completed']).optional(),
+    assigned_to: z.string().uuid().optional(),
+    created_by: z.string().uuid().optional(),
+    due_date_from: z.string().optional(),
+    due_date_to: z.string().optional(),
+    created_from: z.string().optional(),
+    created_to: z.string().optional(),
+    sort_by: z.enum(['title', 'status', 'due_date', 'created_at', 'updated_at']).default('created_at'),
+    sort_direction: z.enum(['asc', 'desc']).default('desc'),
+    page: z.number().int().min(1).default(1),
+    limit: z.number().int().min(1).max(100).default(20),
+    fuzzy_search: z.boolean().default(false),
+  }),
+  async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<{
+    tasks: Task[];
+    total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+    searchAnalytics?: {
+      executionTime: number;
+      resultCount: number;
+    };
+  }>> => {
+    try {
+      const startTime = Date.now();
+      const { 
+        workspace_id, 
+        search, 
+        status,
+        assigned_to,
+        created_by,
+        due_date_from,
+        due_date_to,
+        created_from,
+        created_to,
+        sort_by,
+        sort_direction,
+        page, 
+        limit,
+        fuzzy_search
+      } = input;
+
+      // Build advanced filter options
+      const filterOptions: AdvancedFilterOptions = {
+        search: search ? {
+          query: search,
+          fields: ['title', 'description'],
+          fuzzyMatch: fuzzy_search,
+        } : undefined,
+        filters: {
+          status: status,
+          assigned_to: assigned_to,
+          created_by: created_by,
+        },
+        dateRanges: {
+          due_date: {
+            from: due_date_from,
+            to: due_date_to,
+          },
+          created_at: {
+            from: created_from,
+            to: created_to,
+          },
+        },
+        sortBy: sort_by,
+        sortDirection: sort_direction,
+      };
+
+      // Start with base query including assignee data
+      let query = context.supabase
+        .from('tasks')
+        .select(`
+          *,
+          assignee:assigned_to(
+            id,
+            email
+          ),
+          creator:created_by(
+            id,
+            email
+          )
+        `, { count: 'exact' })
+        .eq('workspace_id', workspace_id);
+
+      // Apply advanced filters
+      query = buildAdvancedFilters(query, filterOptions);
+
+      // Apply pagination
+      const offset = (page - 1) * limit;
+      query = query.range(offset, offset + limit - 1);
+
+      const { data: tasks, error, count } = await query;
+
+      if (error) {
+        throw error;
+      }
+
+      const executionTime = Date.now() - startTime;
+      const total = count || 0;
+      const hasMore = offset + limit < total;
+
+      return createSuccessResponse({
+        tasks: tasks as Task[],
+        total,
+        page,
+        limit,
+        hasMore,
+        searchAnalytics: {
+          executionTime,
+          resultCount: tasks?.length || 0,
+        },
+      });
+    } catch (error) {
+      console.error('Error in advanced task search:', error);
+      return createErrorResponse('Failed to search tasks');
+    }
+  },
+  {
+    requiredRole: 'viewer',
+  }
+);
+
+/**
+ * Get task search suggestions for autocomplete
+ */
+export const getTaskSuggestions = createWorkspaceAction(
+  z.object({
+    workspace_id: z.string().uuid({ message: 'Invalid workspace ID' }),
+    query: z.string().min(1, 'Query is required'),
+    limit: z.number().int().min(1).max(20).default(10),
+  }),
+  async (input, context: ServerActionContext): Promise<EnhancedServerActionResult<{
+    suggestions: Array<{
+      id: string;
+      title: string;
+      status: string;
+      assignee_email?: string;
+      type: 'task';
+    }>;
+  }>> => {
+    try {
+      const { workspace_id, query, limit } = input;
+
+      const { data: tasks, error } = await context.supabase
+        .from('tasks')
+        .select(`
+          id,
+          title,
+          status,
+          assignee:assigned_to(email)
+        `)
+        .eq('workspace_id', workspace_id)
+        .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        throw error;
+      }
+
+      const suggestions = (tasks || []).map(task => ({
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        assignee_email: task.assignee?.email,
+        type: 'task' as const,
+      }));
+
+      return createSuccessResponse({ suggestions });
+    } catch (error) {
+      console.error('Error getting task suggestions:', error);
+      return createErrorResponse('Failed to get task suggestions');
+    }
+  },
+  {
+    requiredRole: 'viewer',
   }
 );

@@ -74,6 +74,7 @@ export default async function WorkspaceSettingsPage({ params }: SettingsPageProp
               </h3>
               <MemberInviteForm 
                 workspaceId={workspace.id}
+                currentUserRole={workspace.role}
                 onSuccess={() => {
                   // In a real app, you'd refresh the member list
                   // For now, we'll just show a success message

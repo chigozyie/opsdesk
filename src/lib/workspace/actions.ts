@@ -302,6 +302,9 @@ export async function updateMemberRole(formData: FormData) {
   const memberId = formData.get('memberId') as string;
   const newRole = formData.get('role') as 'admin' | 'member' | 'viewer';
   const workspaceId = formData.get('workspaceId') as string;
+  const previousRole = formData.get('previousRole') as string;
+  const reason = formData.get('reason') as string;
+  const memberEmail = formData.get('memberEmail') as string;
 
   if (!memberId || !newRole || !workspaceId) {
     return {
@@ -330,10 +333,36 @@ export async function updateMemberRole(formData: FormData) {
       };
     }
 
+    // Get current member details for audit logging
+    const { data: currentMemberData } = await supabase
+      .from('workspace_members')
+      .select('role, user_id')
+      .eq('id', memberId)
+      .eq('workspace_id', workspaceId)
+      .single();
+
+    if (!currentMemberData) {
+      return {
+        error: 'Member not found'
+      };
+    }
+
+    const actualPreviousRole = (currentMemberData as any).role;
+
+    // Prevent changing your own role
+    if ((currentMemberData as any).user_id === user.id) {
+      return {
+        error: 'You cannot change your own role'
+      };
+    }
+
     // Update member role
     const { error: updateError } = await (supabase as any)
       .from('workspace_members')
-      .update({ role: newRole })
+      .update({ 
+        role: newRole,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', memberId)
       .eq('workspace_id', workspaceId);
 
@@ -344,9 +373,37 @@ export async function updateMemberRole(formData: FormData) {
       };
     }
 
+    // Log the role change for audit purposes
+    try {
+      // In a real implementation, you would insert into an audit_log table
+      // For now, we'll just log to console with structured data
+      const auditLogEntry = {
+        action: 'member_role_changed',
+        workspace_id: workspaceId,
+        target_user_id: (currentMemberData as any).user_id,
+        target_member_id: memberId,
+        target_email: memberEmail,
+        previous_role: actualPreviousRole,
+        new_role: newRole,
+        changed_by: user.id,
+        reason: reason || 'No reason provided',
+        timestamp: new Date().toISOString(),
+        ip_address: 'unknown', // In a real app, you'd capture this
+        user_agent: 'unknown'  // In a real app, you'd capture this
+      };
+
+      console.log('AUDIT LOG - Role Change:', JSON.stringify(auditLogEntry, null, 2));
+
+      // TODO: In a production system, insert into audit_log table:
+      // await supabase.from('audit_log').insert(auditLogEntry);
+    } catch (auditError) {
+      console.error('Failed to log audit entry:', auditError);
+      // Don't fail the main operation if audit logging fails
+    }
+
     return {
       success: true,
-      message: 'Member role updated successfully'
+      message: `Member role updated from ${actualPreviousRole} to ${newRole}${reason ? ` (${reason})` : ''}`
     };
 
   } catch (error) {
@@ -363,6 +420,8 @@ export async function removeMember(formData: FormData) {
 
   const memberId = formData.get('memberId') as string;
   const workspaceId = formData.get('workspaceId') as string;
+  const memberEmail = formData.get('memberEmail') as string;
+  const reason = formData.get('reason') as string;
 
   if (!memberId || !workspaceId) {
     return {
@@ -385,7 +444,7 @@ export async function removeMember(formData: FormData) {
       };
     }
 
-    // Get member details before removal
+    // Get member details before removal for audit logging
     const { data: memberToRemove } = await supabase
       .from('workspace_members')
       .select('user_id, role')
@@ -420,9 +479,34 @@ export async function removeMember(formData: FormData) {
       };
     }
 
+    // Log the member removal for audit purposes
+    try {
+      const auditLogEntry = {
+        action: 'member_removed',
+        workspace_id: workspaceId,
+        target_user_id: (memberToRemove as any).user_id,
+        target_member_id: memberId,
+        target_email: memberEmail,
+        target_role: (memberToRemove as any).role,
+        removed_by: user.id,
+        reason: reason || 'No reason provided',
+        timestamp: new Date().toISOString(),
+        ip_address: 'unknown', // In a real app, you'd capture this
+        user_agent: 'unknown'  // In a real app, you'd capture this
+      };
+
+      console.log('AUDIT LOG - Member Removed:', JSON.stringify(auditLogEntry, null, 2));
+
+      // TODO: In a production system, insert into audit_log table:
+      // await supabase.from('audit_log').insert(auditLogEntry);
+    } catch (auditError) {
+      console.error('Failed to log audit entry:', auditError);
+      // Don't fail the main operation if audit logging fails
+    }
+
     return {
       success: true,
-      message: 'Member removed successfully'
+      message: `Member ${memberEmail || 'user'} removed successfully${reason ? ` (${reason})` : ''}`
     };
 
   } catch (error) {
